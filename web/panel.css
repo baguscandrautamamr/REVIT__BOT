@@ -43,7 +43,9 @@
   /* align-items: start supaya tiap kartu setinggi isinya sendiri —
      tanpa ini kartu status ikut meregang mengejar tinggi kartu antrean. */
   .grid { grid-template-columns: 1fr 1fr; align-items: start; }
-  #cmd-card { grid-column: 1 / -1; }
+  /* Dua kartu ini selebar halaman: satu penuh chip, satu berisi form empat
+     kolom. Dipaksa ke setengah lebar, keduanya terlipat tanpa alasan. */
+  #cmd-card, #users-card { grid-column: 1 / -1; }
 }
 
 .card { padding: var(--space-4) var(--space-5) var(--space-5); }
@@ -123,6 +125,72 @@
 .chip:active { transform: scale(0.95); }
 .chip[data-role='admin']::after { content: ' ·admin'; color: var(--text-3); font-size: 11px; }
 .chip.is-copied { background: var(--accent-weak); border-color: var(--accent); }
+
+/* ── Daftar & form user (admin) ─────────────────────────────────────────── */
+.field { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: var(--space-2); }
+@media (max-width: 560px) {
+  /* Di layar sempit Chat ID dan Nama masing-masing sebaris penuh: keduanya
+     diketik/ditempel, dan kolom selebar 120px membuat angka 10 digit terpotong. */
+  .field { grid-template-columns: 1fr 1fr; }
+  .field .input:first-child, .field .btn { grid-column: 1 / -1; }
+}
+
+.input {
+  appearance: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--glass-3);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  min-width: 0;
+}
+.input::placeholder { color: var(--text-3); }
+.input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.users { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.users li {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+}
+.users li.is-inactive { opacity: 0.55; }
+.users b { font-weight: 560; overflow-wrap: anywhere; }
+.users .mono { color: var(--text-3); }
+.users .tag {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--glass-3);
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--r-pill);
+  padding: 2px 8px;
+}
+.users .muted { flex-shrink: 0; }
+
+.icon-btn {
+  appearance: none;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-pill);
+  padding: 5px 9px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-spring);
+}
+.icon-btn:hover { color: var(--err); border-color: var(--err); }
+.icon-btn:active { transform: scale(0.92); }
+
+#users-note { margin: var(--space-3) 0 0; }
 
 /* Toast kecil untuk "Disalin" */
 .toast {

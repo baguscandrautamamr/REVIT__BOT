@@ -742,8 +742,16 @@ Urutan pemeriksaan di webhook, semuanya sebelum job masuk antrean:
 
 Cooldown 2 menit per user setelah command berat (`pdf`, `ifc`, `nwc`, `dwg`).
 
-Menambah user: masukkan `chat_id` ke `bot_users`. Cara user mengetahui chat ID
-sendiri — kirim pesan apa pun ke bot; balasan "belum terdaftar" menyertakan ID-nya.
+Menambah user: buka panel **dari dalam Telegram** sebagai admin, lalu isi kartu
+"User" dengan chat ID dan namanya. Cara user mengetahui chat ID sendiri — kirim
+pesan apa pun ke bot; balasan "belum terdaftar" menyertakan ID-nya.
+
+SQL langsung ke `bot_users` hanya diperlukan untuk admin PERTAMA, sebab sebelum
+ada satu admin pun tidak ada yang berhak membuka kartu itu.
+
+Mencabut akses tidak menghapus barisnya, hanya `is_active = false`: riwayat
+siapa menjalankan command apa tetap utuh, dan preferensi bahasa/temanya kembali
+sendiri kalau nanti diberi akses lagi.
 
 ---
 

@@ -82,21 +82,38 @@ const syncTheme = wireSegment(
 /* ── Data status ───────────────────────────────────────────────────────── */
 let state = null;
 let failed = false;
+let users = null;
+
+// initData dikirim apa adanya; server yang memverifikasi HMAC-nya.
+// Jangan pernah percaya `initDataUnsafe` untuk otorisasi.
+function authHeaders(extra) {
+  return {
+    ...(tg?.initData ? { 'x-telegram-init-data': tg.initData } : {}),
+    ...extra,
+  };
+}
 
 async function load() {
   try {
-    // initData dikirim apa adanya; server yang memverifikasi HMAC-nya.
-    // Jangan pernah percaya `initDataUnsafe` untuk otorisasi.
-    const res = await fetch('/api/panel/state', {
-      headers: tg?.initData ? { 'x-telegram-init-data': tg.initData } : {},
-    });
+    const res = await fetch('/api/panel/state', { headers: authHeaders() });
     if (!res.ok) throw new Error(String(res.status));
     state = await res.json();
     failed = false;
   } catch {
     failed = true;
   }
+  if (state?.role === 'admin') await loadUsers();
   render();
+}
+
+async function loadUsers() {
+  try {
+    const res = await fetch('/api/panel/users', { headers: authHeaders() });
+    if (!res.ok) throw new Error(String(res.status));
+    users = (await res.json()).users ?? [];
+  } catch {
+    users = null;
+  }
 }
 
 /* ── Render ────────────────────────────────────────────────────────────── */
@@ -107,6 +124,7 @@ function render() {
   renderStatus();
   renderQueue();
   renderCommands();
+  renderUsers();
 }
 
 function renderStatus() {
@@ -187,6 +205,107 @@ function renderCommands() {
   }));
 }
 
+/* ── Daftar user (admin) ───────────────────────────────────────────────── */
+function renderUsers() {
+  const card = document.getElementById('users-card');
+  card.hidden = state?.role !== 'admin';
+  if (card.hidden) return;
+
+  const list = document.getElementById('user-list');
+  const rows = users ?? [];
+
+  list.replaceChildren(...rows.map((u) => {
+    const li = document.createElement('li');
+    if (!u.isActive) li.classList.add('is-inactive');
+
+    const name = document.createElement('b');
+    name.textContent = u.name;
+
+    const id = document.createElement('span');
+    id.className = 'mono small';
+    id.textContent = u.chatId;
+
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = u.isActive ? i18n.t(`role.${u.role}`) : i18n.t('users.inactive');
+
+    li.append(name, id, tag);
+
+    // Diri sendiri tidak bisa dicabut — server menolaknya juga, tapi tombol
+    // yang selalu gagal lebih membingungkan daripada tombol yang tidak ada.
+    if (u.chatId === state?.chatId) {
+      const you = document.createElement('span');
+      you.className = 'muted small';
+      you.textContent = i18n.t('users.you');
+      li.append(you);
+    } else if (u.isActive) {
+      const btn = document.createElement('button');
+      btn.className = 'icon-btn';
+      btn.type = 'button';
+      btn.textContent = '✕';
+      btn.title = i18n.t('users.revoke');
+      btn.setAttribute('aria-label', `${i18n.t('users.revoke')} — ${u.name}`);
+      btn.addEventListener('click', () => revokeUser(u));
+      li.append(btn);
+    }
+    return li;
+  }));
+
+  document.getElementById('users-empty').hidden = rows.length > 0;
+}
+
+/** Pesan error dari server → kalimat yang bisa dibaca, dalam bahasa aktif. */
+function saveError(code) {
+  const known = { bad_chat_id: 'err.badChatId', bad_name: 'err.badName', self: 'err.self', not_found: 'err.notFound' };
+  return i18n.t(known[code] ?? 'err.save');
+}
+
+async function submitUser(event) {
+  event.preventDefault();
+  const chatId = document.getElementById('user-chatid');
+  const name = document.getElementById('user-name');
+  const role = document.getElementById('user-role');
+
+  try {
+    const res = await fetch('/api/panel/users', {
+      method: 'POST',
+      headers: authHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({
+        chatId: Number(chatId.value.trim()),
+        name: name.value.trim(),
+        role: role.value,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return toast(saveError(data.error));
+
+    chatId.value = '';
+    name.value = '';
+    toast(i18n.t('users.added'));
+    tg?.HapticFeedback?.notificationOccurred?.('success');
+  } catch {
+    return toast(i18n.t('err.save'));
+  }
+  await loadUsers();
+  renderUsers();
+}
+
+async function revokeUser(user) {
+  try {
+    const res = await fetch(`/api/panel/users?chatId=${encodeURIComponent(user.chatId)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return toast(saveError(data.error));
+    toast(i18n.t('users.revoked'));
+  } catch {
+    return toast(i18n.t('err.save'));
+  }
+  await loadUsers();
+  renderUsers();
+}
+
 /* ── Salin ke chat ─────────────────────────────────────────────────────── */
 async function copyToChat(btn) {
   const text = btn.textContent;
@@ -228,6 +347,7 @@ function relative(iso) {
 
 /* ── Boot ──────────────────────────────────────────────────────────────── */
 document.getElementById('refresh').addEventListener('click', load);
+document.getElementById('user-form').addEventListener('submit', submitUser);
 theme.onThemeChange(() => syncTheme());
 render();
 load();

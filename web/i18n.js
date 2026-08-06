@@ -9,7 +9,10 @@ const SUPPORTED = ['id', 'en'];
 const tg = window.Telegram?.WebApp;
 const listeners = new Set();
 
-const DICT = {
+/* Di-export semata-mata supaya `scripts/check-i18n.ts` bisa membandingkan
+   id vs en tanpa mem-parsing berkas ini sebagai teks. Panel sendiri memakai
+   `t()`, bukan DICT langsung. */
+export const DICT = {
   id: {
     'app.title': 'Revit Bridge',
     'app.subtitle': 'Panel kontrol · elektrikal',
@@ -43,7 +46,25 @@ const DICT = {
     'theme.autoNote': 'Otomatis mengikuti tema Telegram / sistem.',
     'role.viewer': 'viewer',
     'role.admin': 'admin',
+    'users.title': 'User',
+    'users.hint': 'Chat ID dikirim bot saat orangnya mengirim /status.',
+    'users.chatId': 'Chat ID',
+    'users.name': 'Nama',
+    'users.role': 'Peran',
+    'users.add': 'Tambah',
+    'users.empty': 'Belum ada user.',
+    'users.you': 'kamu',
+    'users.inactive': 'nonaktif',
+    'users.revoke': 'Cabut akses',
+    'users.added': 'User disimpan',
+    'users.revoked': 'Akses dicabut',
+    'users.menuNote': 'Admin baru menerima menu command lengkap setelah /api/admin/setup dibuka lagi.',
     'err.load': 'Gagal memuat status. Tarik untuk mencoba lagi.',
+    'err.badChatId': 'Chat ID harus berupa angka.',
+    'err.badName': 'Nama tidak boleh kosong.',
+    'err.self': 'Kamu tidak bisa mencabut akses dirimu sendiri.',
+    'err.notFound': 'Chat ID itu tidak ada di daftar.',
+    'err.save': 'Gagal menyimpan. Coba lagi.',
     'action.refresh': 'Muat ulang',
   },
   en: {
@@ -79,7 +100,25 @@ const DICT = {
     'theme.autoNote': 'Auto follows your Telegram / system theme.',
     'role.viewer': 'viewer',
     'role.admin': 'admin',
+    'users.title': 'Users',
+    'users.hint': 'The bot replies with a chat ID when they send /status.',
+    'users.chatId': 'Chat ID',
+    'users.name': 'Name',
+    'users.role': 'Role',
+    'users.add': 'Add',
+    'users.empty': 'No users yet.',
+    'users.you': 'you',
+    'users.inactive': 'inactive',
+    'users.revoke': 'Revoke access',
+    'users.added': 'User saved',
+    'users.revoked': 'Access revoked',
+    'users.menuNote': 'A new admin gets the full command menu once /api/admin/setup is opened again.',
     'err.load': 'Could not load status. Pull to retry.',
+    'err.badChatId': 'Chat ID must be a number.',
+    'err.badName': 'Name cannot be empty.',
+    'err.self': 'You cannot revoke your own access.',
+    'err.notFound': 'That chat ID is not on the list.',
+    'err.save': 'Could not save. Try again.',
     'action.refresh': 'Refresh',
   },
 };
@@ -118,6 +157,13 @@ export function apply() {
   }
   for (const el of document.querySelectorAll('[data-i18n-label]')) {
     el.setAttribute('aria-label', t(el.dataset.i18nLabel));
+  }
+  // Placeholder merangkap label di form user: kolomnya sempit dan sudah jelas
+  // dari konteks, jadi label terpisah hanya menambah tinggi tanpa menambah arti.
+  for (const el of document.querySelectorAll('[data-i18n-placeholder]')) {
+    const text = t(el.dataset.i18nPlaceholder);
+    el.setAttribute('placeholder', text);
+    el.setAttribute('aria-label', text);
   }
   for (const fn of listeners) fn(locale(), preference);
 }
