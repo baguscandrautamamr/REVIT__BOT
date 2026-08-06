@@ -58,6 +58,8 @@ export const id = {
       '⏸️ Worker sedang di-pause admin. Command tetap diantre, tapi baru dikerjakan setelah /resume.',
     fileTooBig: (p: Params) =>
       `File ${p.size} MB melebihi batas kirim Telegram (50 MB). Link unduh: ${p.url}`,
+    fileFailed: (p: Params) =>
+      `Hasilnya selesai, tapi berkasnya gagal dikirim: ${p.reason}\n\nCoba jalankan lagi command-nya. Kalau berulang, buka /api/health — bagian "storage" menunjukkan apakah bucket berkasnya sudah dibuat.`,
     internal: 'Ada kesalahan internal. Sudah dicatat, coba lagi sebentar.',
   },
 

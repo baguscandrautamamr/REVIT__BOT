@@ -80,6 +80,8 @@ public sealed class CommandHandler : IExternalEventHandler
     private void RunOne(JobDto job, Document? doc, DialogSuppressor dialogs)
     {
         var report = new ReportRequest { Id = job.Id, DocTitle = doc?.Title };
+        byte[]? fileBytes = null;
+        string? fileName = null;
         var started = Stopwatch.StartNew();
         var dialogsBefore = dialogs.Dismissed.Count;
 
@@ -108,7 +110,8 @@ public sealed class CommandHandler : IExternalEventHandler
                 report.Ok = result.Ok;
                 report.Text = result.Text;
                 report.Error = result.Error;
-                report.File = result.File;
+                fileBytes = result.FileBytes;
+                fileName = result.FileName;
             }
         }
         catch (Exception ex)
@@ -136,7 +139,7 @@ public sealed class CommandHandler : IExternalEventHandler
         // membekukan UI Revit selama jaringan lambat.
         _ = Task.Run(async () =>
         {
-            try { await BridgeClient.ReportAsync(report, CancellationToken.None); }
+            try { await BridgeClient.DeliverAsync(report, fileBytes, fileName, CancellationToken.None); }
             catch (Exception ex) { Log.Error("report", ex); }
         });
     }

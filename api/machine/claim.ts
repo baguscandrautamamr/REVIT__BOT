@@ -8,10 +8,9 @@
  * Balas: { job: {...} | null, paused: boolean }
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import crypto from 'node:crypto';
 
 import * as db from '../_lib/db';
-import { ENV } from '../_lib/env';
+import { authorized } from '../_lib/machineauth';
 import { sweepQuietly } from '../_lib/sweep';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -70,16 +69,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-/**
- * Bearer token milik mesin, dibandingkan dengan waktu konstan.
- * `!==` biasa membocorkan panjang prefix yang cocok lewat waktu eksekusi;
- * di jaringan itu sulit dieksploitasi, tapi tidak ada alasan memilih yang lemah.
- */
-function authorized(req: VercelRequest): boolean {
-  const header = req.headers.authorization ?? '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  if (!token || !ENV.machineToken) return false;
-  const a = Buffer.from(token);
-  const b = Buffer.from(ENV.machineToken);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
