@@ -29,22 +29,42 @@ tidak dipakai. Tidak perlu diutak-atik lagi.
 Ini yang paling penting dan paling mudah terlewat: **repo GitHub-mu belum punya
 branch `main`.** Seluruh kode ada di branch `claude/dual-lang-theme-telegram-guide-oix5c8`.
 Selama Vercel menunggu branch produksi yang belum ada, tidak ada apa pun yang
-ter-deploy — dan setiap URL akan 404.
+ter-deploy — dan setiap URL akan 404, termasuk webhook.
 
-Pilih salah satu:
+Semua dikerjakan di dashboard Vercel — **tidak perlu terminal, tidak perlu Git
+di komputermu.**
 
-**A. Jadikan branch ini sebagai `main`** (paling rapi)
+**1. Arahkan branch produksi**
 
-```bash
-git checkout -b main claude/dual-lang-theme-telegram-guide-oix5c8
-git push -u origin main
+Vercel → project `revit-bot` → **Settings** → **Git** → bagian
+**Production Branch** → ganti isinya jadi:
+
 ```
-Lalu di GitHub: **Settings → Branches → Default branch** → `main`.
+claude/dual-lang-theme-telegram-guide-oix5c8
+```
 
-**B. Arahkan Vercel ke branch yang ada**
+→ **Save**.
 
-Vercel → project → **Settings → Git → Production Branch** →
-isi `claude/dual-lang-theme-telegram-guide-oix5c8` → **Save** → **Redeploy**.
+**2. Jadikan deployment-nya produksi**
+
+Mengubah setelan di atas tidak otomatis men-deploy apa pun. Buka tab
+**Deployments**, cari deployment terbaru dari branch itu — kemungkinan besar
+sudah ada, berlabel **Preview**, karena Vercel membangunnya otomatis saat
+branch-nya di-push.
+
+- Kalau **ada**: titik tiga (`⋯`) di sebelahnya → **Promote to Production**.
+- Kalau **belum ada**: titik tiga → **Redeploy**, pilih branch tersebut.
+
+**3. Pastikan berhasil**
+
+Deployment paling atas harus berlabel **Production** dan menunjuk ke branch
+tadi. Domain `revit-bot.vercel.app` hanya melayani deployment berlabel
+Production — selama masih Preview, URL utamamu tetap 404.
+
+> Nama branch-nya memang panjang. Itu tidak berpengaruh apa pun ke hasil —
+> Vercel tidak peduli namanya. Kalau nanti ingin merapikannya jadi `main`,
+> tinggal buat branch `main` dari branch ini dan kembalikan setelan Production
+> Branch — kapan saja, tidak harus sekarang.
 
 ---
 
