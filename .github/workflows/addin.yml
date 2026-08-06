@@ -81,12 +81,26 @@ jobs:
                ...\Addins\2025\RevitTelegramBridge.addin
                ...\Addins\2025\RevitTelegramBridge\RevitTelegramBridge.dll
                ...\Addins\2025\RevitTelegramBridge\System.Security.Cryptography.ProtectedData.dll
-          3. Simpan machine token sekali saja, lewat PowerShell:
-               .\set-token.ps1
-             Token disimpan terenkripsi DPAPI dan terikat ke akun Windows-mu —
-             menyalin filenya ke PC lain tidak ada gunanya.
-          4. Buka Revit, lalu kirim /status ke bot. Kalau PC-nya sudah "online",
-             berarti add-in-nya jalan.
+          3. Simpan machine token, sekali saja. Nilainya disalin dari Vercel →
+             Settings → Environment Variables → MACHINE_TOKEN → Reveal.
+             Buka WINDOWS PowerShell (yang biru, bukan PowerShell 7), masuk ke
+             folder ini, lalu:
+
+               Unblock-File .\set-token.ps1
+               .\set-token.ps1 -Token "tempel-nilai-MACHINE_TOKEN-di-sini"
+
+             Unblock-File dibutuhkan karena berkas ini datang dari zip yang
+             diunduh, dan Windows menandainya sebagai berasal dari internet.
+             Kalau masih ditolak dengan pesan execution policy:
+
+               powershell -ExecutionPolicy Bypass -File .\set-token.ps1 -Token "..."
+
+             Perintah ini dijalankan di PowerShell PC Revit — bukan dikirim ke
+             chat bot. Token disimpan terenkripsi DPAPI dan terikat ke akun
+             Windows-mu; menyalin filenya ke PC lain tidak ada gunanya.
+          4. Tutup dan buka lagi Revit — token hanya dibaca saat add-in dimuat.
+             Lalu kirim /status ke bot. Kalau PC-nya sudah "online", berarti
+             add-in-nya jalan.
 
           File .pdb sengaja tidak disertakan: gunanya hanya untuk debugging.
           TXT

@@ -303,16 +303,40 @@ Kalau Revit **tidak** terpasang, build tetap berhasil: proyeknya jatuh ke
 assembly referensi dari NuGet. Salin-otomatis ke folder Addins tetap jalan
 selama OS-nya Windows.
 
-**b. Pasang machine token** — Windows PowerShell (bukan PowerShell 7), di
-folder `addin/`:
+**b. Pasang machine token.** Tanpa ini add-in memunculkan kotak pesan
+"Machine token belum dipasang" setiap Revit dibuka, dan tidak mengambil satu pun
+job — bot tetap melaporkan PC offline.
+
+Nilainya **bukan** token bot dan bukan sesuatu yang diketik bebas: ia harus sama
+persis dengan `MACHINE_TOKEN` di env Vercel. Ambil dari Vercel → project →
+**Settings → Environment Variables** → baris `MACHINE_TOKEN` → **Reveal** →
+salin.
+
+Lalu, **di PC Revit**, buka **Windows PowerShell** (yang ikonnya biru bawaan
+Windows — bukan PowerShell 7, `Add-Type -AssemblyName System.Security` tidak ada
+di sana), masuk ke folder tempat `set-token.ps1` berada, dan jalankan:
 
 ```powershell
-.\set-token.ps1 -Token "isi-MACHINE_TOKEN-yang-tadi"
+Unblock-File .\set-token.ps1
+.\set-token.ps1 -Token "tempel-nilai-MACHINE_TOKEN-di-sini"
 ```
+
+`Unblock-File` diperlukan kalau skripnya berasal dari zip yang diunduh: Windows
+menandai berkas dari internet, dan tanpa dilepas, PowerShell menolaknya. Kalau
+masih ditolak dengan pesan tentang *execution policy*, jalankan lewat:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\set-token.ps1 -Token "…"
+```
+
+> Perintah ini dijalankan **di PowerShell PC Revit**, bukan dikirim ke chat bot.
+> Bot hanya mengenal command yang diawali `/`.
 
 Token disimpan terenkripsi DPAPI di `%APPDATA%\RevitTelegramBridge\`, terikat
 ke akun Windows-mu. Ia **tidak** ada di dalam DLL — DLL bisa disalin siapa saja
 yang punya akses ke PC, dan string di dalamnya terbaca dengan Notepad.
+
+Terakhir: **tutup dan buka lagi Revit.** Token hanya dibaca saat add-in dimuat.
 
 **c. Arahkan ke server** (opsional, default sudah `revit-bot.vercel.app`):
 
