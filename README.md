@@ -107,6 +107,13 @@ atas pengelompokan itu, jadi tidak ada yang perlu mengetik 18 nomor sheet:
 /pdf --disc F_UTILITY         # seluruh discipline → satu PDF PER series, di-zip
 ```
 
+> **Setelah menambah command apa pun, menu `/` Telegram harus dipasang ulang.**
+> Menu itu disimpan di sisi Telegram, bukan dibaca dari kode — buka
+> `https://<domain>/api/admin/setup?secret=<TELEGRAM_WEBHOOK_SECRET>` sekali, lalu
+> tutup-buka aplikasi Telegram (klien meng-cache daftarnya). Command yang belum
+> terdaftar TETAP BEKERJA kalau diketik manual; ia hanya tidak muncul di saran
+> pengetikan — kegagalan yang tidak menimbulkan error dan karena itu mudah lolos.
+
 Mulai dari `/series`. Nama grup hanya tertulis di browser tree Revit — di PC —
 sementara yang meminta gambarnya sedang memegang HP; tanpa command itu, `--series`
 hanya bisa dipakai orang yang sudah duduk di depan Revit, yaitu justru orang yang

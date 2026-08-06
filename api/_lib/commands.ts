@@ -48,6 +48,19 @@ export function notImplemented(spec: CommandSpec): boolean {
  *   - scripts/set-commands.ts (menu Telegram, per bahasa)
  *   - docs/TELEGRAM-BOT-GUIDE.*.md (dijaga sinkron manual)
  *
+ * MENAMBAH COMMAND DI SINI TIDAK MENGUBAH MENU "/" DI TELEGRAM.
+ *
+ * Menu itu disimpan di sisi Telegram, dipasang lewat `setMyCommands`, dan hanya
+ * berubah kalau ada yang memasangnya ulang:
+ *
+ *   buka  https://<domain>/api/admin/setup?secret=<TELEGRAM_WEBHOOK_SECRET>
+ *   atau  npx tsx scripts/set-commands.ts
+ *
+ * Lupa langkah ini tidak menimbulkan error apa pun: command-nya BEKERJA kalau
+ * diketik manual, ia hanya tidak muncul di daftar saat orang mengetik "/". Dan
+ * karena yang hilang cuma saran pengetikan, tidak ada yang menyadarinya — sampai
+ * ada yang bertanya kenapa command yang katanya sudah jadi tidak ada di botnya.
+ *
  * Nama command sengaja tetap Bahasa Inggris di semua locale: itu yang
  * dikenali menu Telegram lintas bahasa. Yang diterjemahkan adalah
  * DESKRIPSI-nya (lewat `setMyCommands(language_code)`) dan balasannya.
