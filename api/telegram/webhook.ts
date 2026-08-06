@@ -357,11 +357,20 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
       if (!joined) return { error: t('errors.missingArgs', { example }) };
       return { payload: { mark: joined } };
 
+    // Daftar sheet: spasi memisahkan, karena beberapa sheet boleh sekaligus.
+    // Nomor sheet tidak mengandung spasi; kalau kamu memakai NAMA sheet yang
+    // mengandung spasi, kutip: /pdf "GROUND & FIRST FLOOR"
     case 'pdf':
-    case 'png':
     case 'dwg':
       if (!positional.length) return { error: t('errors.missingArgs', { example }) };
       return { payload: { views: positional } };
+
+    // Satu view saja, jadi seluruh token digabung — nama view hampir selalu
+    // mengandung spasi ("GROUND & FIRST FLOOR - LIGHTING"), dan tidak ada
+    // argumen kedua yang bisa direbut oleh penggabungan itu.
+    case 'png':
+      if (!joined) return { error: t('errors.missingArgs', { example }) };
+      return { payload: { view: joined, views: [joined] } };
 
     case 'schedule':
       if (!joined) return { error: t('errors.missingArgs', { example }) };

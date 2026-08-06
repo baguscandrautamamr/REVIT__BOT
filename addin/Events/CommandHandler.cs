@@ -30,6 +30,12 @@ public sealed class CommandHandler : IExternalEventHandler
             new FindByMarkCommand(),
             new ExportPdfCommand(),
             new ExportScheduleCommand(),
+            new ExportPngCommand(),
+            new ExportDwgCommand(),
+            new ExportIfcCommand(),
+            new ExportNwcCommand(),
+            new PanelCommand(),
+            new ConnectedLoadCommand(),
         }.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
     }
 

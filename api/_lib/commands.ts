@@ -73,17 +73,17 @@ export const COMMANDS: CommandSpec[] = [
     usage: { id: '/count L1 · /count L1 lighting --detail', en: '/count L1 · /count L1 lighting --detail' },
   },
   { name: 'tray', role: 'viewer', section: 'query', inMenu: true, addin: true, usage: { id: '/tray L1', en: '/tray L1' } },
-  { name: 'panel', role: 'viewer', section: 'query', inMenu: true, usage: { id: '/panel LP-01', en: '/panel LP-01' } },
+  { name: 'panel', role: 'viewer', section: 'query', inMenu: true, addin: true, usage: { id: '/panel LP-01', en: '/panel LP-01' } },
   { name: 'find', role: 'viewer', section: 'query', inMenu: true, addin: true, aliases: { id: ['cari'] }, usage: { id: '/find MARK-123', en: '/find MARK-123' } },
-  { name: 'load', role: 'viewer', section: 'query', inMenu: true, aliases: { id: ['beban'] }, usage: { id: '/load L1', en: '/load L1' } },
+  { name: 'load', role: 'viewer', section: 'query', inMenu: true, addin: true, aliases: { id: ['beban'] }, usage: { id: '/load L1', en: '/load L1' } },
 
   // ── Export ─────────────────────────────────────────────────────────────
   { name: 'pdf', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/pdf LP-01 LP-02', en: '/pdf LP-01 LP-02' } },
-  { name: 'png', role: 'viewer', section: 'export', inMenu: true, usage: { id: '/png 3D-ELEC', en: '/png 3D-ELEC' } },
+  { name: 'png', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/png 3D-ELEC', en: '/png 3D-ELEC' } },
   { name: 'schedule', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/schedule PANEL-SCH', en: '/schedule PANEL-SCH' } },
-  { name: 'dwg', role: 'admin', section: 'export', inMenu: false, usage: { id: '/dwg E-101', en: '/dwg E-101' } },
-  { name: 'nwc', role: 'admin', section: 'export', inMenu: false },
-  { name: 'ifc', role: 'admin', section: 'export', inMenu: false },
+  { name: 'dwg', role: 'admin', section: 'export', inMenu: false, addin: true, usage: { id: '/dwg E-101', en: '/dwg E-101' } },
+  { name: 'nwc', role: 'admin', section: 'export', inMenu: false, addin: true },
+  { name: 'ifc', role: 'admin', section: 'export', inMenu: false, addin: true },
 
   // ── Modifikasi (selalu dua langkah) ────────────────────────────────────
   { name: 'setparam', role: 'admin', section: 'modify', inMenu: false, confirm: true, usage: { id: '/setparam L1 tray Comments "LV LADDER"', en: '/setparam L1 tray Comments "LV LADDER"' } },
