@@ -43,6 +43,11 @@ const errors: string[] = [];
  */
 const REQUIRED_USINGS: Array<{ ns: string; types: string[] }> = [
   { ns: 'System.Text', types: ['StringBuilder', 'Encoding'] },
+  // `Match` sengaja TIDAK didaftar: repo ini punya `LevelResolver.Match()` dan
+  // tipe `ViewMatch`/`SheetMatch` sendiri, dan penjaga yang berteriak untuk kode
+  // yang benar akan dimatikan orang — bukan diperbaiki. `Regex` sudah cukup:
+  // tidak ada yang memakai `Match` tanpa lebih dulu menyentuh `Regex`.
+  { ns: 'System.Text.RegularExpressions', types: ['Regex', 'RegexOptions'] },
   {
     ns: 'System.Text.Json',
     types: ['JsonElement', 'JsonSerializer', 'JsonSerializerOptions', 'JsonValueKind', 'JsonNamingPolicy'],
