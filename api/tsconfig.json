@@ -1,0 +1,23 @@
+{
+  "//": [
+    "Pasangan wajib dari api/package.json. Yang satu menentukan bagaimana Node MENAFSIRKAN berkas hasil build; yang ini menentukan SYNTAX apa yang dihasilkan. Keduanya harus sepakat CommonJS — kalau tidak, fungsinya mati sebelum satu baris pun jalan.",
+    "",
+    "tsconfig root memakai \"module\": \"ESNext\", jadi hasil transpile selalu memakai syntax import/export. Dikombinasikan dengan package.json, hanya ada dua kemungkinan dan dua-duanya gagal:",
+    "  type: module   + syntax ESM  -> Node menafsirkan ESM  -> ERR_MODULE_NOT_FOUND, karena import relatif di repo ini ditulis tanpa ekstensi",
+    "  type: commonjs + syntax ESM  -> Node menafsirkan CJS  -> SyntaxError: Cannot use import statement outside a module",
+    "Keduanya muncul sebagai FUNCTION_INVOCATION_FAILED yang identik dari luar.",
+    "",
+    "Berkas ini memutus simpul itu dengan menyuruh transpile menghasilkan CommonJS, jadi syntax dan penafsiran akhirnya cocok. Builder @vercel/node mencari tsconfig.json dengan walkParentDirs mulai dari folder entrypoint, jadi berkas ini yang menang atas yang di root.",
+    "",
+    "verbatimModuleSyntax dimatikan karena ia mewajibkan `import x = require()` saat target emit CommonJS. moduleResolution diturunkan ke Node10 karena Bundler hanya sah bersama module esnext/preserve.",
+    "",
+    "tsconfig root TIDAK berubah, jadi `npm run typecheck` tetap memeriksa api/ maupun scripts/ seperti sebelumnya."
+  ],
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "verbatimModuleSyntax": false
+  },
+  "include": ["./**/*.ts"]
+}

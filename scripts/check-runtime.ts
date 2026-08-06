@@ -3,27 +3,29 @@
  *
  *   npx tsx scripts/check-runtime.ts
  *
- * Menjaga satu invarian yang kalau rusak akan MEMATIKAN SELURUH ENDPOINT
- * sekaligus, dengan `tsc` tetap hijau dan tanpa satu pun petunjuk di kode.
+ * Menjaga satu invarian yang kalau rusak MEMATIKAN SELURUH ENDPOINT sekaligus,
+ * dengan `tsc` tetap hijau dan tanpa satu pun petunjuk di kode. Dari luar
+ * gejalanya cuma FUNCTION_INVOCATION_FAILED, sama persis untuk semua sebab.
  *
- * Riwayatnya: package.json root memakai `"type": "module"`, dan builder
- * @vercel/node memutuskan format modul begini —
+ * Ada DUA setelan yang harus sepakat, dan keduanya diwarisi dari root:
  *
- *   isEsm = ext === '.mjs' || ext === '.mts'
- *        || pkg.type === 'module' && ['.js','.ts','.tsx'].includes(ext)
+ *   package.json  "type"    → bagaimana Node MENAFSIRKAN berkas hasil build
+ *   tsconfig.json "module"  → syntax apa yang DIHASILKAN transpile
  *
- * — lalu memuat entrypoint sebagai ESM native, bukan hasil bundling. Resolver
- * ESM Node mewajibkan path relatif ditulis lengkap dengan ekstensi, sementara
- * seluruh repo ini menulis `'./_lib/db'`. Hasilnya setiap endpoint menjawab
- * FUNCTION_INVOCATION_FAILED, dan satu-satunya jejaknya cuma ERR_MODULE_NOT_FOUND
- * di log Vercel.
+ * Kalau keduanya tidak cocok, hanya ada dua kemungkinan dan dua-duanya mati:
  *
- * `pkg` diambil dari package.json TERDEKAT ke entrypoint, jadi `api/package.json`
- * berisi `"type": "commonjs"` yang membatalkannya. Dua hal yang dijaga di sini:
+ *   type: module   + syntax ESM → ESM, tapi import relatif tanpa ekstensi
+ *                                 → ERR_MODULE_NOT_FOUND
+ *   type: commonjs + syntax ESM → CJS, tapi berkasnya berisi `import`
+ *                                 → SyntaxError: Cannot use import statement
  *
- *   1. Berkas itu masih ada dan masih menyatakan commonjs.
- *   2. Tidak ada fitur ESM-only (top-level await, import.meta) yang menyelinap
- *      masuk ke api/ — keduanya butuh ESM dan akan gagal saat dimuat sebagai CJS.
+ * Builder @vercel/node mencari package.json maupun tsconfig.json dengan
+ * walkParentDirs mulai dari folder entrypoint, jadi `api/package.json` dan
+ * `api/tsconfig.json` yang menang atas yang di root.
+ *
+ * Penjaga ini sengaja memeriksa KECOCOKAN, bukan satu jawaban tertentu: setelan
+ * penuh-ESM juga sah, asal setiap import relatif ditulis lengkap dengan
+ * ekstensi. Itu ikut diperiksa di bawah.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -32,49 +34,78 @@ import { dirname, join, relative } from 'node:path';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const errors: string[] = [];
 
-const rootPkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
-
-if (rootPkg.type === 'module') {
-  let apiPkg: { type?: string } | null = null;
+/** JSON dengan komentar `//` sebagai array — dipakai kedua berkas config di api/. */
+function readJson(path: string): Record<string, any> | null {
   try {
-    apiPkg = JSON.parse(readFileSync(join(root, 'api', 'package.json'), 'utf8'));
+    return JSON.parse(readFileSync(path, 'utf8'));
   } catch {
-    apiPkg = null;
-  }
-
-  if (!apiPkg) {
-    errors.push(
-      'api/package.json hilang. package.json root memakai "type": "module", jadi ' +
-        '@vercel/node akan memuat api/**/*.ts sebagai ESM native — dan SEMUA endpoint ' +
-        'mati dengan ERR_MODULE_NOT_FOUND karena import relatif di repo ini tidak ' +
-        'memakai ekstensi. Kembalikan berkas itu dengan isi { "type": "commonjs" }.',
-    );
-  } else if (apiPkg.type !== 'commonjs') {
-    errors.push(
-      `api/package.json menyatakan "type": "${apiPkg.type}", seharusnya "commonjs". ` +
-        'Lihat komentar di dalam berkas itu sebelum mengubahnya.',
-    );
+    return null;
   }
 }
 
-// Fitur ESM-only di dalam api/ — akan meledak saat dimuat sebagai CommonJS.
-for (const file of walk(join(root, 'api'))) {
-  if (!file.endsWith('.ts')) continue;
-  const rel = relative(root, file);
-  const source = readFileSync(file, 'utf8');
+const rootPkg = readJson(join(root, 'package.json')) ?? {};
+const apiPkg = readJson(join(root, 'api', 'package.json'));
+const rootTs = readJson(join(root, 'tsconfig.json')) ?? {};
+const apiTs = readJson(join(root, 'api', 'tsconfig.json'));
 
-  const lines = source.split('\n');
-  lines.forEach((line, i) => {
-    if (line.trim().startsWith('*') || line.trim().startsWith('//')) return;
+// Yang benar-benar berlaku untuk api/**: yang terdekat menang.
+const interpretedAs: string = apiPkg?.type ?? rootPkg.type ?? 'commonjs';
+const emittedModule: string = String(
+  apiTs?.compilerOptions?.module ?? rootTs.compilerOptions?.module ?? 'commonjs',
+).toLowerCase();
 
-    if (/\bimport\.meta\b/.test(line)) {
-      errors.push(`${rel}:${i + 1} memakai import.meta — tidak ada di CommonJS.`);
-    }
-    // Top-level await: `await` di kolom 0, atau deklarasi di kolom 0 yang menunggu.
-    if (/^await\s/.test(line) || /^(?:const|let|var)\s[^=]+=\s*await\s/.test(line)) {
-      errors.push(`${rel}:${i + 1} memakai top-level await — butuh ESM.`);
-    }
-  });
+const emitsEsm = emittedModule !== 'commonjs' && emittedModule !== 'node16cjs';
+
+if (interpretedAs === 'commonjs' && emitsEsm) {
+  errors.push(
+    `api/ ditafsirkan CommonJS (package.json "type": "${interpretedAs}") tapi transpile ` +
+      `menghasilkan ESM (tsconfig "module": "${emittedModule}"). Setiap fungsi akan mati ` +
+      'dengan SyntaxError: Cannot use import statement outside a module. Samakan keduanya — ' +
+      'lihat komentar di api/tsconfig.json.',
+  );
+}
+
+if (interpretedAs === 'module' && !emitsEsm) {
+  errors.push(
+    `api/ ditafsirkan ESM (package.json "type": "module") tapi transpile menghasilkan ` +
+      `CommonJS (tsconfig "module": "${emittedModule}"). Samakan keduanya.`,
+  );
+}
+
+const apiFiles = walk(join(root, 'api')).filter((f) => f.endsWith('.ts'));
+
+if (interpretedAs === 'module' && emitsEsm) {
+  // Setelan penuh-ESM itu sah, TAPI resolver ESM Node mewajibkan path relatif
+  // ditulis lengkap dengan ekstensi. Tanpa itu semua fungsi mati dengan
+  // ERR_MODULE_NOT_FOUND — dan `tsc` tidak akan mengeluh sedikit pun karena
+  // moduleResolution "Bundler" memang mengizinkannya.
+  for (const file of apiFiles) {
+    const rel = relative(root, file);
+    readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+      const m = line.match(/^\s*(?:import|export)[^'"]*from\s+['"](\.[^'"]*)['"]/);
+      if (m && !/\.(js|mjs|cjs|json)$/.test(m[1])) {
+        errors.push(`${rel}:${i + 1} import relatif '${m[1]}' tanpa ekstensi — ESM Node menolaknya.`);
+      }
+    });
+  }
+}
+
+if (interpretedAs === 'commonjs') {
+  // Fitur ESM-only yang menyelinap masuk akan meledak saat dimuat sebagai CJS.
+  for (const file of apiFiles) {
+    const rel = relative(root, file);
+    readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('*') || trimmed.startsWith('//')) return;
+
+      if (/\bimport\.meta\b/.test(line)) {
+        errors.push(`${rel}:${i + 1} memakai import.meta — tidak ada di CommonJS.`);
+      }
+      if (/^await\s/.test(line) || /^(?:const|let|var)\s[^=]+=\s*await\s/.test(line)) {
+        errors.push(`${rel}:${i + 1} memakai top-level await — butuh ESM.`);
+      }
+    });
+  }
 }
 
 function walk(dir: string): string[] {
@@ -91,4 +122,7 @@ if (errors.length) {
   console.error(`❌ ${errors.length} masalah runtime:\n` + errors.map((e) => '  · ' + e).join('\n'));
   process.exit(1);
 }
-console.log('✅ Format modul fungsi Vercel benar — api/ CommonJS, root ESM.');
+console.log(
+  `✅ Format modul fungsi Vercel cocok — api/ ditafsirkan ${interpretedAs}, ` +
+    `transpile menghasilkan ${emittedModule}.`,
+);
