@@ -19,59 +19,47 @@ public sealed class ExportPdfCommand : IBotCommand
         var wanted = payload.StrList("views");
         if (wanted.Count == 0) return ExecResult.Fail("Sheet belum disebutkan.");
 
-        var sheets = new FilteredElementCollector(doc)
-            .OfClass(typeof(ViewSheet))
-            .Cast<ViewSheet>()
-            .Where(s => !s.IsTemplate)
-            .ToList();
-
         var matched = new List<ViewSheet>();
         var missing = new List<string>();
 
         foreach (var name in wanted)
         {
-            var sheet = sheets.FirstOrDefault(s =>
-                            string.Equals(s.SheetNumber, name, StringComparison.OrdinalIgnoreCase))
-                        ?? sheets.FirstOrDefault(s =>
-                            s.SheetNumber.Contains(name, StringComparison.OrdinalIgnoreCase));
-
+            var sheet = ViewFinder.Sheet(doc, name);
             if (sheet is null) missing.Add(name);
             else if (!matched.Contains(sheet)) matched.Add(sheet);
         }
 
         if (matched.Count == 0)
-            return ExecResult.Fail($"Sheet tidak ditemukan: {string.Join(", ", missing)}");
+        {
+            var names = ViewFinder.Sheets(doc).Select(s => $"{s.SheetNumber} — {s.Name}");
+            return ExecResult.Fail(
+                $"Sheet tidak ditemukan: {string.Join(", ", missing)}\n\nYang ada:\n{ViewFinder.Suggest(names)}");
+        }
 
-        var folder = Path.Combine(Path.GetTempPath(), "RevitTelegramBridge");
-        Directory.CreateDirectory(folder);
+        // Folder BARU untuk tiap export. Dulu semua export berbagi satu folder
+        // %TEMP%\RevitTelegramBridge dan hasilnya dicari dengan mencocokkan
+        // awalan nama: sisa export sebelumnya yang gagal dihapus bisa terpungut
+        // dan terkirim sebagai "hasil" — PDF sheet yang salah, tanpa satu pun
+        // tanda bahwa itu bukan yang diminta.
+        using var workspace = new ExportWorkspace("pdf");
 
-        var stamp = DateTime.Now.ToString("yyyy-MM-dd");
-        var project = SanitizeFileName(doc.Title);
         var baseName = matched.Count == 1
-            ? $"{project}_{SanitizeFileName(matched[0].SheetNumber)}_{stamp}"
-            : $"{project}_{matched.Count}sheets_{stamp}";
+            ? $"{ExportWorkspace.Sanitize(doc.Title)}_{ExportWorkspace.Sanitize(matched[0].SheetNumber)}_{ExportWorkspace.Stamp()}"
+            : $"{ExportWorkspace.Sanitize(doc.Title)}_{matched.Count}sheets_{ExportWorkspace.Stamp()}";
 
         var options = BuildOptions(baseName);
 
         // doc.Export() tidak butuh Transaction — operasinya read-only.
-        var ok = doc.Export(folder, matched.Select(s => s.Id).ToList(), options);
+        var ok = doc.Export(workspace.Folder, matched.Select(s => s.Id).ToList(), options);
         if (!ok) return ExecResult.Fail("Revit menolak export PDF. Cek warning di model.");
 
-        var file = new DirectoryInfo(folder)
-            .GetFiles("*.pdf")
-            .Where(f => f.Name.StartsWith(baseName, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(f => f.LastWriteTimeUtc)
-            .FirstOrDefault();
-
+        var file = workspace.Collect("pdf", $"{baseName}.zip");
         if (file is null) return ExecResult.Fail("Export selesai tapi berkas PDF tidak ditemukan.");
-
-        var bytes = File.ReadAllBytes(file.FullName);
-        try { file.Delete(); } catch { /* biarkan; %TEMP% dibersihkan Windows */ }
 
         var text = $"{matched.Count} sheet: {string.Join(", ", matched.Select(s => s.SheetNumber))}";
         if (missing.Count > 0) text += $"\nDilewati (tidak ditemukan): {string.Join(", ", missing)}";
 
-        return ExecResult.WithFile(text, file.Name, bytes);
+        return ExecResult.WithFile(text, file.Value.Name, file.Value.Bytes);
     }
 
     /// <summary>
@@ -103,10 +91,4 @@ public sealed class ExportPdfCommand : IBotCommand
         RasterQuality = RasterQualityType.High,
     };
 
-    private static string SanitizeFileName(string input)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = new string(input.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
-        return cleaned.Replace(' ', '_');
-    }
 }

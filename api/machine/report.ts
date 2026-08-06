@@ -8,17 +8,27 @@
  *   "docTitle": "PRJ-B.rvt",
  *   "text": "Lampu 184\n…",                    // opsional
  *   "error": "…",                              // saat ok=false
- *   "file": { "name": "…pdf", "base64": "…" }  // opsional, ≤ 50 MB
+ *   "elapsedMs": 184000,                       // lama proses di Revit
+ *
+ *   // Berkas hasil, salah satu bentuk:
+ *   "file": { "name": "…pdf", "base64": "…" }        // ≤ 3 MB, ikut di body
+ *   "file": { "name": "…pdf", "storagePath": "…" }   // > 3 MB, sudah diunggah
+ *   "fileError": "…"                                 // add-in gagal menyiapkannya
  * }
  *
  * Hasilnya meng-EDIT pesan "⏳" yang sudah ada, bukan mengirim pesan baru.
+ *
+ * Body request ke Serverless Function Vercel dibatasi 4,5 MB oleh PLATFORM —
+ * batas keras yang tidak bisa dinaikkan dari kode. Itu sebabnya berkas besar
+ * tidak lewat sini sama sekali; add-in mengunggahnya langsung ke Supabase
+ * Storage dan endpoint ini hanya menerima path-nya. Lihat api/_lib/storage.ts.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import crypto from 'node:crypto';
 
 import * as db from '../_lib/db';
-import { ENV } from '../_lib/env';
 import { translator } from '../_lib/i18n';
+import { authorized } from '../_lib/machineauth';
+import * as storage from '../_lib/storage';
 import { durationText, resultBlocks } from '../_lib/reply';
 import {
   MAX_TEXT,
@@ -52,7 +62,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     docTitle?: string | null;
     text?: string;
     error?: string;
-    file?: { name: string; base64: string };
+    // `base64` hanya untuk berkas kecil. Yang besar diunggah add-in langsung
+    // ke Supabase Storage dan diwakili `storagePath` — body request ke fungsi
+    // Vercel dibatasi 4,5 MB oleh platform, jadi PDF sungguhan tidak akan
+    // pernah muat di sini. Lihat api/_lib/storage.ts.
+    file?: { name: string; base64?: string; storagePath?: string };
+    /** Add-in gagal menyiapkan/mengunggah berkasnya. Wajib sampai ke user. */
+    fileError?: string;
     elapsedMs?: number;
   };
 
@@ -95,20 +111,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await deliver(job, compose(mdv2(head), ok ? resultBlocks(updated.result) : []));
 
-    if (ok && body.file?.base64) {
-      const bytes = Buffer.from(body.file.base64, 'base64');
-      if (bytes.byteLength > MAX_UPLOAD) {
-        await sendMessage(
-          job.chat_id,
-          mdv2(
-            t('errors.fileTooBig', {
-              size: (bytes.byteLength / 1024 / 1024).toFixed(1),
-              url: '—',
-            }),
-          ),
-        );
-      } else {
-        await sendDocument(job.chat_id, { name: body.file.name, bytes });
+    // Berkas ditangani SETELAH balasan teks terkirim, dan kegagalannya tidak
+    // pernah menjatuhkan request ini. Barisnya sudah ditandai selesai; menjawab
+    // 500 di sini hanya menghasilkan laporan yang tidak bisa diulang, dan user
+    // kembali menatap "⏳" untuk kerja Revit yang sebenarnya sudah rampung.
+    let fileNote: string | null = body.fileError ?? null;
+    if (ok && body.file && !fileNote) {
+      fileNote = await sendResultFile(job, body.file, t);
+    }
+    if (fileNote) {
+      try {
+        await sendMessage(job.chat_id, mdv2(t('errors.fileFailed', { reason: fileNote })));
+      } catch (err) {
+        console.error('[report] gagal mengabari kegagalan berkas', err);
       }
     }
 
@@ -116,6 +131,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (err) {
     console.error('[report]', err);
     return res.status(500).json({ error: 'internal' });
+  }
+}
+
+/**
+ * Kirim berkas hasil ke Telegram. Mengembalikan null kalau berhasil, atau
+ * alasan yang bisa dibaca orang kalau tidak — dan alasan itu WAJIB sampai ke
+ * chat. Berkas yang gagal tanpa sepatah kata pun adalah persis kegagalan yang
+ * membuat /pdf terlihat "masih jalan" selama belasan menit.
+ */
+async function sendResultFile(
+  job: db.CommandRow,
+  file: { name: string; base64?: string; storagePath?: string },
+  t: ReturnType<typeof translator>,
+): Promise<string | null> {
+  let bytes: Buffer;
+
+  try {
+    if (file.storagePath) {
+      bytes = await storage.download(file.storagePath);
+    } else if (file.base64) {
+      bytes = Buffer.from(file.base64, 'base64');
+    } else {
+      return 'add-in tidak menyertakan isi berkasnya';
+    }
+  } catch (err) {
+    console.error('[report] ambil berkas gagal', err);
+    return err instanceof Error ? err.message.slice(0, 300) : 'tidak bisa mengambil berkas';
+  }
+
+  try {
+    if (bytes.byteLength > MAX_UPLOAD) {
+      return t('errors.fileTooBig', {
+        size: (bytes.byteLength / 1024 / 1024).toFixed(1),
+        url: '—',
+      });
+    }
+    await sendDocument(job.chat_id, { name: file.name, bytes });
+    return null;
+  } catch (err) {
+    console.error('[report] sendDocument gagal', err);
+    return err instanceof Error ? err.message.slice(0, 300) : 'Telegram menolak berkasnya';
+  } finally {
+    // Persinggahan, bukan arsip. Dihapus baik berhasil maupun tidak — kalau
+    // gagal, mengulang command lebih murah daripada menumpuk PDF di storage.
+    if (file.storagePath) await storage.remove(file.storagePath);
   }
 }
 
@@ -194,14 +254,13 @@ function plain(md: string): string {
   return md.replace(/```/g, '').replace(/\\(.)/g, '$1').trim().slice(0, MAX_TEXT);
 }
 
-function authorized(req: VercelRequest): boolean {
-  const header = req.headers.authorization ?? '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  if (!token || !ENV.machineToken) return false;
-  const a = Buffer.from(token);
-  const b = Buffer.from(ENV.machineToken);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
-/** File PDF besar dikirim sebagai base64 — naikkan batas body dari 1 MB. */
-export const config = { api: { bodyParser: { sizeLimit: '70mb' } } };
+/**
+ * Naikkan batas parser dari 1 MB, untuk berkas KECIL yang masih dikirim inline.
+ *
+ * Angka ini sengaja di bawah batas platform Vercel (4,5 MB untuk body request
+ * Serverless Function) — menaikkannya lebih tinggi tidak ada gunanya, sebab
+ * yang menolak duluan adalah platformnya, dengan 413, sebelum satu baris
+ * handler pun jalan. Berkas yang lebih besar TIDAK boleh lewat sini: ia
+ * diunggah add-in langsung ke Supabase Storage. Lihat api/_lib/storage.ts.
+ */
+export const config = { api: { bodyParser: { sizeLimit: '4mb' } } };

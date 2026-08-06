@@ -53,6 +53,8 @@ export const en = {
       '⏸️ The worker is paused by an admin. Your command stays queued, but it only runs after /resume.',
     fileTooBig: (p: Params) =>
       `File is ${p.size} MB, over Telegram's 50 MB upload limit. Download link: ${p.url}`,
+    fileFailed: (p: Params) =>
+      `The job finished, but the file could not be delivered: ${p.reason}\n\nRun the command again. If it keeps happening, open /api/health — the "storage" section shows whether the file bucket exists.`,
     internal: 'Internal error. It has been logged — try again shortly.',
   },
 

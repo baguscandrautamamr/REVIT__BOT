@@ -21,7 +21,23 @@ public sealed class ExecResult
     public bool Ok { get; init; }
     public string? Text { get; init; }
     public string? Error { get; init; }
-    public FileDto? File { get; init; }
+
+    /// <summary>
+    /// Isi berkas hasil, MENTAH — bukan base64.
+    ///
+    /// Dulu di sini langsung disimpan sebagai base64 karena satu-satunya jalur
+    /// pengiriman adalah menempelkannya ke body JSON /api/machine/report. Jalur
+    /// itu ternyata tidak pernah bisa bekerja untuk berkas berukuran nyata:
+    /// body request ke Serverless Function Vercel dibatasi 4,5 MB oleh
+    /// platform, jadi setiap PDF sheet ditolak 413 sebelum handler-nya jalan.
+    ///
+    /// Sekarang BridgeClient yang memilih jalurnya — inline untuk yang kecil,
+    /// unggah langsung ke Supabase Storage untuk yang besar — dan pilihan itu
+    /// butuh byte aslinya, bukan yang sudah dikembungkan sepertiga.
+    /// </summary>
+    public byte[]? FileBytes { get; init; }
+
+    public string? FileName { get; init; }
 
     public static ExecResult Success(string text) => new() { Ok = true, Text = text };
 
@@ -29,7 +45,8 @@ public sealed class ExecResult
     {
         Ok = true,
         Text = text,
-        File = new FileDto { Name = name, Base64 = Convert.ToBase64String(bytes) },
+        FileName = name,
+        FileBytes = bytes,
     };
 
     public static ExecResult Fail(string error) => new() { Ok = false, Error = error };

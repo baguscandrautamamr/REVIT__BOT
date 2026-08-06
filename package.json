@@ -10,7 +10,8 @@
     "check:commands": "tsx scripts/check-commands.ts",
     "check:runtime": "tsx scripts/check-runtime.ts",
     "set-commands": "tsx scripts/set-commands.ts",
-    "check": "npm run typecheck && npm run check:i18n && npm run check:commands && npm run check:runtime"
+    "check": "npm run typecheck && npm run check:i18n && npm run check:commands && npm run check:runtime && npm run simulate",
+    "simulate": "tsx scripts/simulate-job.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
