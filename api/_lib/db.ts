@@ -91,6 +91,43 @@ export async function updateUser(chatId: number, patch: Partial<BotUser>): Promi
   });
 }
 
+/**
+ * Tambah user — atau hidupkan lagi yang pernah dicabut aksesnya.
+ *
+ * `resolution=merge-duplicates` membuat chat_id yang sudah ada di-UPDATE, bukan
+ * ditolak 409. Yang ditimpa hanya kolom yang ikut dikirim, jadi `lang`, `theme`,
+ * dan `created_at` milik user lama tetap utuh: mencabut lalu memberi akses lagi
+ * tidak menghapus preferensinya.
+ */
+export async function upsertUser(row: {
+  chat_id: number;
+  name: string;
+  role: Role;
+}): Promise<BotUser> {
+  const rows = await rest<BotUser[]>('bot_users', {
+    method: 'POST',
+    headers: { prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify([{ ...row, is_active: true }]),
+  });
+  return rows[0]!;
+}
+
+/**
+ * Cabut/kembalikan akses. Sengaja BUKAN DELETE: `commands.chat_id` menunjuk ke
+ * baris ini, jadi menghapusnya akan ditolak foreign key begitu user itu pernah
+ * memakai bot — dan riwayat siapa menjalankan apa ikut hilang.
+ *
+ * Mengembalikan null kalau chat_id-nya tidak ada.
+ */
+export async function setUserActive(chatId: number, active: boolean): Promise<BotUser | null> {
+  const rows = await rest<BotUser[]>(`bot_users?chat_id=eq.${chatId}`, {
+    method: 'PATCH',
+    headers: RETURNING,
+    body: JSON.stringify({ is_active: active }),
+  });
+  return rows[0] ?? null;
+}
+
 // ── machine_state ─────────────────────────────────────────────────────────
 
 export async function getMachine(): Promise<MachineState> {

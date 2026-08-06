@@ -213,7 +213,14 @@ values (123456789, 'Bagus', 'admin');
 > delete from bot_users where chat_id = 123456789;
 > ```
 
-Rekan lain ditambahkan dengan cara sama, `role` diisi `'viewer'`.
+**Hanya admin pertama yang butuh SQL.** Sesudah ini rekan lain ditambahkan dari
+kartu "User" di panel — buka panel dari dalam Telegram, isi chat ID dan namanya,
+pilih perannya. SQL Editor tidak perlu dibuka lagi.
+
+Alasan admin pertama tetap lewat SQL: kartu itu sendiri hanya terbuka untuk
+admin, dan sebelum langkah ini belum ada satu pun admin. Konsekuensi yang
+disengaja — jadi admin berarti punya akses database, dan tidak ada yang bisa
+mendaftarkan dirinya sendiri lewat chat.
 
 **Lalu buka lagi URL Langkah 4.** Sekarang tabel `bot_users` sudah berisi
 admin, jadi menu command admin ikut terpasang — sebelumnya dilewati karena

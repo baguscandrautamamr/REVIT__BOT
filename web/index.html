@@ -78,6 +78,32 @@
         <div id="cmd-sections"></div>
       </section>
 
+      <!-- Hanya untuk admin; app.js yang membuka `hidden`-nya. Disembunyikan
+           dari HTML, bukan dari CSS: sebelum /api/panel/state menjawab, peran
+           pembukanya belum diketahui. -->
+      <section class="card glass" id="users-card" hidden>
+        <div class="card__head">
+          <h2 data-i18n="users.title"></h2>
+          <span class="muted small" data-i18n="users.hint"></span>
+        </div>
+
+        <form class="field" id="user-form" autocomplete="off">
+          <input class="input mono" id="user-chatid" inputmode="numeric"
+                 required data-i18n-placeholder="users.chatId">
+          <input class="input" id="user-name" maxlength="64"
+                 required data-i18n-placeholder="users.name">
+          <select class="input" id="user-role" data-i18n-label="users.role">
+            <option value="viewer" data-i18n="role.viewer"></option>
+            <option value="admin" data-i18n="role.admin"></option>
+          </select>
+          <button class="btn btn--primary" type="submit" data-i18n="users.add"></button>
+        </form>
+
+        <ul class="users" id="user-list"></ul>
+        <p class="muted empty" id="users-empty" data-i18n="users.empty"></p>
+        <p class="muted small" id="users-note" data-i18n="users.menuNote"></p>
+      </section>
+
       <section class="card glass" id="pref-card">
         <div class="card__head"><h2 data-i18n="pref.title"></h2></div>
         <p class="muted small" data-i18n="theme.autoNote"></p>

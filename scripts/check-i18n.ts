@@ -11,8 +11,14 @@
  * Kenapa penting: key yang hilang tidak error saat runtime — `t()` diam-diam
  * fallback ke Indonesia, dan user EN melihat campuran dua bahasa.
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+
 import { COMMANDS } from '../api/_lib/commands';
 import { LOCALES, catalog, type Locale } from '../api/_lib/i18n';
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 type Flat = Map<string, { placeholders: Set<string>; kind: 'string' | 'fn' }>;
 
@@ -65,6 +71,55 @@ for (const locale of LOCALES) {
   }
 }
 
+/* ── Katalog panel web ─────────────────────────────────────────────────────
+   `web/i18n.js` punya katalog sendiri (label UI, bukan kalimat bot) dan
+   kegagalannya persis sama: key yang hilang di EN diam-diam jatuh ke Indonesia,
+   jadi panel tampil setengah berbahasa Indonesia tanpa satu pun error.
+
+   Diimpor, bukan diparsing sebagai teks. Berkas itu untuk browser dan menyentuh
+   `window` saat dimuat, jadi shim-nya harus dipasang SEBELUM impor dijalankan —
+   itu sebabnya dinamis. */
+(globalThis as { window?: unknown }).window ??= {};
+// Lewat URL, bukan specifier literal: berkasnya JavaScript dan repo ini memakai
+// `allowJs: false`, jadi specifier literal akan ditolak tsc karena tidak ada
+// deklarasi tipenya.
+const panelI18nUrl = pathToFileURL(join(here, '..', 'web', 'i18n.js')).href;
+const { DICT } = (await import(panelI18nUrl)) as {
+  DICT: Record<string, Record<string, string>>;
+};
+
+const panelLocales = Object.keys(DICT);
+const panelBase = panelLocales[0]!;
+
+for (const locale of panelLocales) {
+  if (locale === panelBase) continue;
+  for (const key of Object.keys(DICT[panelBase]!)) {
+    if (!(key in DICT[locale]!)) errors.push(`[panel ${locale}] key hilang: ${key}`);
+  }
+  for (const key of Object.keys(DICT[locale]!)) {
+    if (!(key in DICT[panelBase]!)) errors.push(`[panel ${panelBase}] key hilang: ${key}`);
+  }
+  for (const [key, value] of Object.entries(DICT[panelBase]!)) {
+    const other = DICT[locale]![key];
+    if (other === undefined) continue;
+    const mine = placeholdersOf(value);
+    const theirs = placeholdersOf(other);
+    for (const p of mine) {
+      if (!theirs.has(p)) errors.push(`[panel ${locale}] ${key}: placeholder {${p}} hilang`);
+    }
+    for (const p of theirs) {
+      if (!mine.has(p)) errors.push(`[panel ${panelBase}] ${key}: placeholder {${p}} hilang`);
+    }
+  }
+}
+
+// Setiap `data-i18n*` di index.html harus punya key-nya, kalau tidak elemen itu
+// menampilkan nama key mentah ("users.title") di layar.
+const html = readFileSync(join(here, '..', 'web', 'index.html'), 'utf8');
+for (const m of html.matchAll(/data-i18n(?:-label|-placeholder)?="([^"]+)"/g)) {
+  if (!(m[1]! in DICT[panelBase]!)) errors.push(`web/index.html memakai key yang tidak ada: ${m[1]}`);
+}
+
 // Batas Telegram: nama command 1–32 char [a-z0-9_], deskripsi 3–256 char.
 for (const locale of LOCALES) {
   const desc = catalog(locale).commandDesc;
@@ -80,4 +135,7 @@ if (errors.length) {
   console.error(`❌ ${errors.length} masalah i18n:\n` + errors.map((e) => '  · ' + e).join('\n'));
   process.exit(1);
 }
-console.log(`✅ i18n konsisten — ${baseFlat.size} key × ${LOCALES.length} bahasa.`);
+console.log(
+  `✅ i18n konsisten — bot ${baseFlat.size} key × ${LOCALES.length} bahasa, ` +
+    `panel ${Object.keys(DICT[panelBase]!).length} key × ${panelLocales.length} bahasa.`,
+);

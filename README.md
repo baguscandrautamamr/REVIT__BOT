@@ -61,6 +61,7 @@ api/
     report.ts       add-in lapor hasil → edit pesan "⏳" + kirim file
   panel/
     state.ts        data untuk panel web (butuh initData sah)
+    users.ts        tambah/cabut akses user — admin saja, dari panel
 addin/
   App.cs            OnStartup: buat ExternalEvent, start worker
   Polling/          loop polling — TANPA Revit API

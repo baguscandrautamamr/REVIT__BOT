@@ -31,6 +31,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     res.setHeader('cache-control', 'no-store');
     return res.status(200).json({
+      // Panel memakainya untuk mengenali barisnya sendiri di daftar user —
+      // admin tidak boleh diberi tombol yang mencabut aksesnya sendiri.
+      chatId: user.chat_id,
       role: user.role,
       lang: user.lang,
       locale: resolveLocale(user.lang, auth.user.language_code),

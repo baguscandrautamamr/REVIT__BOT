@@ -737,8 +737,16 @@ Check order in the webhook, all before anything is queued:
 
 Cooldown is 2 minutes per user after a heavy command (`pdf`, `ifc`, `nwc`, `dwg`).
 
-Adding a user: insert their `chat_id` into `bot_users`. How they find their own
-chat ID — send the bot anything; the "not registered" reply includes it.
+Adding a user: open the panel **from inside Telegram** as an admin and fill in
+the "Users" card with their chat ID and name. How they find their own chat ID —
+send the bot anything; the "not registered" reply includes it.
+
+Writing SQL against `bot_users` is only needed for the FIRST admin: until one
+admin exists, nobody is allowed to open that card.
+
+Revoking access does not delete the row, it sets `is_active = false`: the record
+of who ran which command stays intact, and their language/theme preferences come
+back if they are granted access again.
 
 ---
 
