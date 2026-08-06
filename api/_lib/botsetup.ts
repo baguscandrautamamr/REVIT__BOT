@@ -59,8 +59,23 @@ export async function applyBotSetup(opts: SetupOptions): Promise<SetupReport> {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
-    const json = (await res.json()) as { ok: boolean; description?: string };
-    if (!json.ok) throw new Error(`${method}: ${json.description}`);
+
+    // Baca sebagai teks dulu. Kalau jaringan lewat proxy perusahaan atau
+    // Telegram sedang bermasalah, yang kembali adalah HTML — dan `res.json()`
+    // langsung melempar "Unexpected token '<'", pesan yang tidak menuntun ke
+    // mana pun. Teks mentahnya jauh lebih berguna.
+    const raw = await res.text();
+    let json: { ok: boolean; description?: string };
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      throw new Error(
+        `${method}: balasan bukan JSON (HTTP ${res.status}). ` +
+          `Isi awal: ${raw.slice(0, 160)}`,
+      );
+    }
+
+    if (!json.ok) throw new Error(`${method}: ${json.description ?? `HTTP ${res.status}`}`);
   }
 
   // 1. Webhook. Dipasang lebih dulu — tanpa ini bot diam total, dan menu

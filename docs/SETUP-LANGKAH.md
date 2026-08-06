@@ -138,6 +138,11 @@ yang dilewati. Aman dibuka berkali-kali — semuanya menimpa, bukan menambah.
 > Endpoint ini dilindungi `TELEGRAM_WEBHOOK_SECRET`. Tanpa itu, siapa pun yang
 > menebak URL-nya bisa memindahkan webhook botmu ke server lain.
 
+**Lebih suka PowerShell?** Ada jalur setara yang meng-clone repo ke komputer
+dan menjalankan hal yang sama dari sana — lihat
+[Lampiran A](#lampiran-a--jalur-powershell). Hasilnya identik; keduanya
+memanggil fungsi yang sama.
+
 **Verifikasi** — buka (ganti `<TOKEN>` dengan token bot):
 
 ```
@@ -352,6 +357,75 @@ Token bot tidak pernah muncul di URL — dibaca dari env di sisi server.
 | Panel 401 di browser | Memang begitu — buka dari dalam Telegram |
 
 Daftar lengkap: [TELEGRAM-BOT-GUIDE.id.md §16](./TELEGRAM-BOT-GUIDE.id.md#16-troubleshooting).
+
+---
+
+## Lampiran A — Jalur PowerShell
+
+Pengganti Langkah 4 dan Langkah 6, untuk yang lebih suka menjalankan dari
+komputer sendiri. Berguna juga karena PC yang sama nanti dipakai membangun
+add-in di Langkah 8.
+
+### Prasyarat (sekali saja)
+
+| Perlu | Unduh |
+|---|---|
+| Git untuk Windows | <https://git-scm.com/download/win> |
+| Node.js LTS | <https://nodejs.org> |
+
+Tutup dan buka lagi PowerShell setelah memasang keduanya, supaya `PATH`
+terbaca.
+
+### Clone dan deploy
+
+```powershell
+# 1. Ambil repo ke folder mana pun
+cd $env:USERPROFILE
+git clone https://github.com/baguscandrautamamr/REVIT__BOT.git
+cd REVIT__BOT
+
+# 2. Jalankan
+.\scripts\deploy-bot.ps1
+```
+
+Skrip itu mengerjakan, berurutan: cek prasyarat → `git clone`/`git pull` →
+`npm ci` → tanya kredensial → pasang webhook + menu dua bahasa + deskripsi +
+tombol panel → verifikasi lewat `getWebhookInfo` dan menampilkan hasilnya.
+
+Kalau PowerShell menolak menjalankan skrip:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+Berlaku hanya untuk jendela itu, dan hilang saat ditutup — lebih sempit
+daripada mengubah kebijakan seluruh sistem.
+
+### Membuat secret yang valid
+
+```powershell
+.\scripts\deploy-bot.ps1 -NewSecret
+```
+
+Menghasilkan 64 karakter heksadesimal — selalu diterima Telegram, selalu aman
+di URL. Pasang di Vercel, **Redeploy**, baru jalankan skripnya lagi.
+
+### Menjalankan ulang
+
+```powershell
+.\scripts\deploy-bot.ps1 -SkipClone
+```
+
+`-SkipClone` melewati git dan langsung deploy dari folder yang ada. Ini yang
+kamu pakai di Langkah 6, setelah barismu masuk ke `bot_users`.
+
+### Kenapa kredensial ditanya lewat prompt, bukan parameter
+
+PowerShell menyimpan setiap baris perintah ke
+`%APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt`
+sebagai teks biasa. Token yang diketik sebagai parameter tertinggal di sana
+selamanya, terbaca siapa pun yang bisa membuka berkas itu. Yang diketik di
+prompt tidak masuk riwayat.
 
 ---
 

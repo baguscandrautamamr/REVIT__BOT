@@ -72,7 +72,8 @@ web/
 supabase/
   migrations/001_init.sql
 scripts/
-  set-commands.ts   pasang menu Telegram per bahasa + scope admin
+  deploy-bot.ps1    clone + npm ci + deploy konfigurasi bot (Windows)
+  set-commands.ts   pasang webhook + menu Telegram per bahasa + scope admin
   check-i18n.ts     penjaga konsistensi katalog (jalankan di CI)
 docs/
 ```

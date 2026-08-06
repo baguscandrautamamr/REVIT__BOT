@@ -44,7 +44,17 @@ async function call<T = unknown>(method: string, body: unknown): Promise<T> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const json = (await res.json()) as { ok: boolean; result?: T; description?: string; parameters?: { retry_after?: number } };
+
+  // Teks dulu, baru parse: balasan non-JSON (halaman error proxy, 502 dari
+  // gateway) akan melempar "Unexpected token '<'" yang tidak menjelaskan apa pun.
+  const raw = await res.text();
+  let json: { ok: boolean; result?: T; description?: string; parameters?: { retry_after?: number } };
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw new Error(`${method}: balasan bukan JSON (HTTP ${res.status}). Isi awal: ${raw.slice(0, 160)}`);
+  }
+
   if (!json.ok) {
     // 429 membawa `retry_after` dalam detik. Naikkan sebagai error bertipe
     // supaya pemanggil bisa memutuskan menunda, bukan mengulang langsung.
