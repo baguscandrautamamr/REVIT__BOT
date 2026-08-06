@@ -139,6 +139,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ── Uji jalur webhook secara langsung ──────────────────────────────────
+  //
+  // Ini yang membedakan "Telegram tidak mengirim" dari "handler menolak".
+  // Kita POST update kosong ke webhook kita sendiri, dengan header rahasia
+  // yang persis dipakai Telegram. Body tanpa `message`/`callback_query`
+  // membuat handler tidak melakukan apa-apa — jadi aman diulang.
+  try {
+    const probe = await fetch(expectedWebhook, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-telegram-bot-api-secret-token': ENV.webhookSecret,
+      },
+      body: JSON.stringify({ update_id: 0 }),
+    });
+    const body = (await probe.text()).slice(0, 200);
+    out.webhookSelfTest = { status: probe.status, body };
+
+    if (probe.status === 403) {
+      problems.push(
+        'Handler webhook menolak header rahasianya sendiri (403). Artinya nilai ' +
+          'TELEGRAM_WEBHOOK_SECRET yang dipakai saat setWebhook BERBEDA dengan yang ' +
+          'ada di environment variable Vercel. Penyebab paling sering: env sudah ' +
+          'diubah tapi deployment belum di-Redeploy, jadi fungsi masih memakai nilai lama.',
+      );
+    } else if (probe.status === 404) {
+      problems.push(
+        `${expectedWebhook} menjawab 404 — fungsi webhook tidak ada di deployment ini. ` +
+          'Pastikan deployment produksi memakai commit terbaru.',
+      );
+    } else if (probe.status !== 200) {
+      problems.push(`Webhook menjawab HTTP ${probe.status}. Telegram menganggap non-2xx sebagai gagal.`);
+    }
+  } catch (err) {
+    out.webhookSelfTest = { error: short(err) };
+    problems.push('Tidak bisa menghubungi webhook sendiri — cek log fungsi di Vercel.');
+  }
+
   // ── Dedupe ─────────────────────────────────────────────────────────────
   try {
     const res2 = await fetch(`${ENV.supabaseUrl}/rest/v1/tg_updates?select=update_id&limit=1`, {
