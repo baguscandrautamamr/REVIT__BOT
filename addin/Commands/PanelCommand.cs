@@ -92,9 +92,27 @@ public sealed class PanelCommand : IBotCommand
         catch { return "—"; }
     }
 
+    /// <summary>
+    /// Apparent load satu circuit, dalam VA.
+    ///
+    /// `ElectricalSystem.ApparentLoad` mengembalikan SATUAN INTERNAL Revit, bukan
+    /// VA. Versi sebelumnya memakainya apa adanya, dan angkanya meleset 10,7639
+    /// kali — persis faktor ft² per m², sebab satuan daya internal Revit
+    /// diturunkan dari kaki, bukan meter.
+    ///
+    /// Meleset sepuluh kali lipat tidak terbaca sebagai kesalahan satuan; ia
+    /// terbaca sebagai panel yang kelebihan beban. Dicocokkan dengan panel
+    /// schedule aslinya:
+    ///
+    ///   circuit (D)/107  →  bot 6.458    schedule    600 VA   (600 × 10,7639)
+    ///   total            →  bot 1.421.719    schedule 132.082 VA
+    ///
+    /// `Rating` sengaja TIDAK ikut dikonversi: satuan internal Revit untuk arus
+    /// memang ampere, dan angkanya sudah cocok dengan MCB di schedule (20 A).
+    /// </summary>
     private static double Apparent(ElectricalSystem c)
     {
-        try { return c.ApparentLoad; }
+        try { return UnitUtils.ConvertFromInternalUnits(c.ApparentLoad, UnitTypeId.VoltAmperes); }
         catch { return 0; }
     }
 
