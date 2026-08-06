@@ -37,5 +37,6 @@ jobs:
 
       - run: npm ci
 
-      # typecheck + i18n + daftar command panel + format modul + simulasi job
+      # typecheck + i18n + daftar command panel + format modul + sumber add-in
+      # + simulasi job
       - run: npm run check

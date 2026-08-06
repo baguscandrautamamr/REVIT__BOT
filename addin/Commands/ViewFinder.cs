@@ -1,3 +1,4 @@
+using System.Text;
 using Autodesk.Revit.DB;
 
 namespace RevitTelegramBridge.Commands;

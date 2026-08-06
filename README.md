@@ -239,7 +239,7 @@ Telegram → Vercel → Supabase → polling → `ExternalEvent` → balik.
 ## Pemeriksaan sebelum deploy
 
 ```bash
-npm run check     # lima pemeriksaan, berhenti di yang pertama gagal
+npm run check     # enam pemeriksaan, berhenti di yang pertama gagal
 ```
 
 | Pemeriksaan | Yang dijaga |
@@ -248,9 +248,10 @@ npm run check     # lima pemeriksaan, berhenti di yang pertama gagal
 | `check:i18n` | katalog ID/EN: key, placeholder, batas panjang Telegram |
 | `check:commands` | daftar command panel web ↔ server, termasuk penanda "belum jalan" |
 | `check:runtime` | format modul fungsi Vercel — kalau menyimpang, SEMUA endpoint mati |
+| `check:addin` | sumber C# add-in: byte NUL, kurung tidak berimbang, `using` yang hilang. BUKAN compiler — yang menentukan tetap workflow `addin` |
 | `simulate` | seluruh jalur hasil job di atas Supabase + Telegram tiruan |
 
-Kelimanya juga jalan otomatis di GitHub Actions (`.github/workflows/check.yml`).
+Keenamnya juga jalan otomatis di GitHub Actions (`.github/workflows/check.yml`).
 Semuanya menangkap kerusakan yang TIDAK menimbulkan error saat runtime: key
 terjemahan yang hilang diam-diam jatuh ke Bahasa Indonesia, daftar command di
 panel yang menyimpang hanya menampilkan lebih sedikit tombol, dan berkas hasil
