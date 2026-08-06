@@ -695,6 +695,36 @@ async function main() {
     check('11 sheet yang diketik langsung tetap ditolak di server',
       tooMany === undefined && sent.some((s) => s.text?.includes('10')),
       sent.map((s) => s.text).join(' | ').slice(0, 60));
+
+    // Papan ketik ponsel mengganti "--" jadi em dash SECARA OTOMATIS. Yang
+    // sampai ke bot adalah "—disc" — satu karakter — dan versi pertama fitur ini
+    // menolaknya, lalu menjawab "Sheet tidak ditemukan: —disc". Benar-benar
+    // terjadi pada pemakaian pertama, dari HP, seperti yang seharusnya.
+    //
+    // Karakternya di bawah ini sengaja em dash dan en dash SUNGGUHAN, bukan
+    // "--": penjaga yang mengetik "--" tidak menguji apa pun.
+    const em = await typed('/pdf —disc F_UTILTY', 5);
+    check('em dash dari autocorrect ponsel dibaca sebagai flag',
+      (em?.payload as Record<string, unknown>)?.discipline === 'F_UTILTY',
+      JSON.stringify(em?.payload));
+
+    const en = await typed('/pdf –series "GENERAL-LV"', 6);
+    check('en dash juga',
+      (en?.payload as Record<string, unknown>)?.series === 'GENERAL-LV',
+      JSON.stringify(en?.payload));
+
+    const one = await typed('/pdf -series "GROUNDING"', 7);
+    check('satu tanda hubung ASCII pun diterima untuk nama flag yang dikenal',
+      (one?.payload as Record<string, unknown>)?.series === 'GROUNDING',
+      JSON.stringify(one?.payload));
+
+    // Yang TIDAK boleh berubah: tanda hubung ada di hampir setiap nomor sheet,
+    // jadi nomor sheet tidak boleh ikut terbaca sebagai flag.
+    const sheetish = await typed('/pdf -EP-1101 ME-F-EL-0000', 8);
+    check('nomor sheet berawalan hubung tetap nomor sheet, bukan flag',
+      Array.isArray((sheetish?.payload as Record<string, unknown>)?.views) &&
+      ((sheetish?.payload as { views: string[] }).views).includes('-EP-1101'),
+      JSON.stringify(sheetish?.payload));
   }
 
   server.close();

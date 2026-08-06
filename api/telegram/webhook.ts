@@ -10,7 +10,13 @@
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { SERVER_SIDE, notImplemented, parseCommand, type CommandSpec } from '../_lib/commands';
+import {
+  SERVER_SIDE,
+  notImplemented,
+  parseCommand,
+  splitArgs,
+  type CommandSpec,
+} from '../_lib/commands';
 import * as db from '../_lib/db';
 import { ENV } from '../_lib/env';
 import { resolveLocale, translator, type Locale } from '../_lib/i18n';
@@ -316,8 +322,10 @@ type Built = { payload: Record<string, unknown> } | { error: string };
 function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built {
   const t = translator(locale);
   const example = spec.usage?.[locale] ?? `/${spec.name}`;
-  const positional = args.filter((a) => !a.startsWith('--'));
-  const flags = args.filter((a) => a.startsWith('--')).map((f) => f.slice(2));
+  // Pemisahan flag ada di commands.ts, bukan di sini: papan ketik ponsel
+  // mengganti "--" jadi em dash otomatis, dan penanganannya harus berlaku untuk
+  // semua flag sekaligus. Lihat catatan di `splitArgs`.
+  const { positional, flags } = splitArgs(args);
 
   // Command yang menerima SATU nama menggabungkan kembali seluruh token.
   // Nama di proyek nyata mengandung spasi ("GROUND FLOOR", "PANEL SCHEDULE
