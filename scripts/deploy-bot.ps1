@@ -122,10 +122,35 @@ lalu pasang di Vercel, Redeploy, dan jalankan skrip ini lagi.
 }
 
 if (-not $AdminChatIds) {
+    Write-Host "  Chat ID didapat dengan mengirim /status ke bot — balasannya menyebut angkamu." -ForegroundColor DarkGray
     $AdminChatIds = Read-Host '  Chat ID admin, pisahkan koma (kosongkan kalau belum tahu)'
 }
+
 if ([string]::IsNullOrWhiteSpace($AdminChatIds)) {
-    Write-Warn2 'Tanpa chat ID admin, menu command admin dilewati. Jalankan lagi setelah barismu ada di bot_users.'
+    Write-Warn2 'Tanpa chat ID admin, menu command admin dilewati. Jalankan lagi setelah kamu tahu angkanya.'
+}
+else {
+    # Saring lebih awal. Telegram menolak chat ID yang tidak dikenalnya dengan
+    # "chat not found", dan angka contoh dari dokumentasi adalah penyebab
+    # paling sering.
+    $ids = $AdminChatIds -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    foreach ($id in $ids) {
+        if ($id -notmatch '^-?\d+$') { Fail "Chat ID '$id' bukan angka." }
+        if ($id -eq '123456789') {
+            Fail @"
+123456789 itu angka CONTOH dari dokumentasi, bukan chat ID-mu.
+
+Cara mendapatkan yang asli:
+  1. Kirim /status ke botmu di Telegram.
+  2. Balasannya berbunyi "...tambahkan chat ID kamu: <angka>".
+  3. Pakai angka itu.
+
+Kalau bot belum menjawab, webhook-nya belum terpasang - jalankan skrip ini
+lagi dan kosongkan bagian chat ID admin.
+"@
+        }
+    }
+    $AdminChatIds = ($ids -join ',')
 }
 
 $panelUrl = "$($BaseUrl.TrimEnd('/'))/panel"

@@ -114,17 +114,34 @@ export async function applyBotSetup(opts: SetupOptions): Promise<SetupReport> {
   }
 
   // 3. Menu penuh untuk admin, per chat.
+  //
+  // Kegagalan di sini TIDAK boleh menjatuhkan sisanya. Satu chat ID keliru
+  // dulu membatalkan seluruh setup di tengah jalan — webhook sudah terpasang,
+  // deskripsi dan tombol panel belum, dan tidak ada yang memberi tahu bahwa
+  // hasilnya separuh jadi.
   for (const chatId of opts.adminChatIds) {
     const scope = { type: 'chat', chat_id: chatId };
-    await call('setMyCommands', { commands: menuFor('en', 'admin'), scope });
-    for (const locale of LOCALES) {
-      await call('setMyCommands', {
-        commands: menuFor(locale, 'admin'),
-        scope,
-        language_code: catalog(locale).meta.bcp47,
-      });
+    try {
+      await call('setMyCommands', { commands: menuFor('en', 'admin'), scope });
+      for (const locale of LOCALES) {
+        await call('setMyCommands', {
+          commands: menuFor(locale, 'admin'),
+          scope,
+          language_code: catalog(locale).meta.bcp47,
+        });
+      }
+      report.steps.push(`menu admin ${chatId} → ${menuFor('en', 'admin').length} command`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      report.warnings.push(
+        /chat not found/i.test(message)
+          ? `Chat ID ${chatId} tidak dikenal Telegram. Dua sebab yang mungkin: ` +
+            'angkanya salah (mis. masih memakai contoh 123456789), atau akun itu ' +
+            'belum pernah mengirim pesan apa pun ke bot. Kirim /status ke bot dari ' +
+            'akun tersebut, lalu jalankan ini lagi.'
+          : `Menu admin untuk ${chatId} gagal: ${message}`,
+      );
     }
-    report.steps.push(`menu admin ${chatId} → ${menuFor('en', 'admin').length} command`);
   }
   if (opts.adminChatIds.length === 0) {
     report.warnings.push(
