@@ -8,8 +8,8 @@
  * Callback keyboard memakai prefix `pref:` supaya router callback di webhook
  * bisa memilahnya dari konfirmasi dua langkah (`confirm:`).
  */
-import { answerCallbackQuery, editMessageText, mdv2, sendMessage } from '../_lib/telegram';
-import { LOCALES, catalog, isLocale, resolveLocale, translator, type LangPref, type Locale } from '../_lib/i18n';
+import { answerCallbackQuery, editMessageText, mdv2, sendMessage } from './telegram';
+import { LOCALES, catalog, isLocale, resolveLocale, translator, type LangPref, type Locale } from './i18n';
 
 export type ThemePref = 'auto' | 'light' | 'dark';
 

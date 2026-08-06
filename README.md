@@ -41,7 +41,12 @@ thread — polling di background, eksekusi lewat `ExternalEvent`.
 ```
 api/
   health.ts         cek env + koneksi database (buka di browser setelah deploy)
+  package.json      "type": "commonjs" — CARA Node memuat hasil compile
+  tsconfig.json     "module": "CommonJS" — BENTUK hasil compile-nya
+                    keduanya harus sepakat, kalau tidak semua endpoint mati;
+                    dijaga oleh `npm run check:runtime`
   _lib/
+    preferences.ts  handler /lang dan /theme
     i18n/           katalog ID + EN, resolusi bahasa
     commands.ts     daftar command: role, alias, section  (sumber tunggal)
     telegram.ts     escaping MarkdownV2, kirim pesan/file, verifikasi initData
@@ -51,7 +56,6 @@ api/
     sweep.ts        tutup job mati (kedaluwarsa / ditinggal Revit) + kabari user
   telegram/
     webhook.ts      pintu masuk Telegram: validasi, routing, antrean
-    preferences.ts  handler /lang dan /theme
   machine/
     claim.ts        add-in ambil job (merangkap heartbeat)
     report.ts       add-in lapor hasil → edit pesan "⏳" + kirim file
