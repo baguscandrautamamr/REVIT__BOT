@@ -1,39 +1,20 @@
-# Langkah Setup — dari posisi kamu sekarang
+# Langkah Setup — dari nol sampai bot menjawab
 
-Panduan ini melanjutkan dari apa yang sudah kamu kerjakan. Referensi lengkap
-tiap topik ada di [TELEGRAM-BOT-GUIDE.id.md](./TELEGRAM-BOT-GUIDE.id.md);
-di sini hanya urutan tindakan.
+Semua langkah di sini bisa dikerjakan **lewat browser dan dashboard saja** —
+tidak perlu terminal, tidak perlu Git di komputermu. Terminal baru dibutuhkan
+di langkah terakhir, saat membangun add-in di PC Revit.
 
-Domain kamu: `https://revit-bot.vercel.app` · Bot: `@revitone_bot`
+Referensi lengkap tiap topik ada di
+[TELEGRAM-BOT-GUIDE.id.md](./TELEGRAM-BOT-GUIDE.id.md); di sini hanya urutan
+tindakan.
 
----
-
-## Yang sudah beres
-
-| ✅ | Catatan |
-|---|---|
-| Project Vercel dibuat | `revit-bot.vercel.app` |
-| Tabel Supabase dibuat | `bot_users`, `commands`, `machine_state` — sesuai `001_init.sql` |
-| Bot Telegram dibuat | `@revitone_bot` |
-| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` di Vercel | Sudah ada, ditandai Sensitive — sudah benar |
-
-**Satu koreksi kecil:** halaman *URL Configuration* (Site URL / Redirect URLs)
-di Supabase itu untuk **Supabase Auth**. Bot ini tidak memakai Supabase Auth
-sama sekali — login user ditangani Telegram. Isinya tidak mengganggu, tapi
-tidak dipakai. Tidak perlu diutak-atik lagi.
+Contoh domain di bawah: `https://revit-bot.vercel.app` · bot `@revitone_bot`.
 
 ---
 
-## Langkah 0 — Pastikan Vercel sudah men-deploy sesuatu
+## Langkah 1 — Vercel sudah men-deploy
 
-Repo ini tidak punya branch `main`. Seluruh kode ada di
-`claude/dual-lang-theme-telegram-guide-oix5c8`.
-
-**Itu kemungkinan besar bukan masalah.** GitHub menjadikan branch pertama yang
-di-push sebagai *default branch*, dan Vercel mengambil Production Branch dari
-default branch repo saat project dihubungkan. Jadi biasanya sudah benar sendiri.
-
-**Cara memastikan — tanpa masuk Settings sama sekali.** Buka di browser:
+Buka di browser:
 
 ```
 https://revit-bot.vercel.app/api/health
@@ -41,91 +22,138 @@ https://revit-bot.vercel.app/api/health
 
 | Yang muncul | Artinya |
 |---|---|
-| JSON `{"ready":…,"missingEnv":[…]}` | Deploy sudah jalan. **Langkah 0 selesai**, lanjut ke Langkah 1 |
-| `404: NOT_FOUND` | Deployment-nya belum berlabel Production — perbaiki di bawah |
+| JSON `{"ready":…,"missingEnv":[…]}` | Deploy jalan → lanjut Langkah 2 |
+| `404: NOT_FOUND` | Deployment belum berlabel Production → lihat di bawah |
 
-### Kalau 404
+**Kalau 404.** Repo ini tidak punya branch `main`; seluruh kode ada di branch
+`claude/dual-lang-theme-telegram-guide-oix5c8`. Biasanya bukan masalah — GitHub
+menjadikan branch pertama yang di-push sebagai *default branch*, dan Vercel
+mengambil Production Branch dari situ. Kalau ternyata belum:
 
 Halaman **Settings → Git di level tim** (ciri: ada tulisan "Manage projects" di
-sebelah tiap toggle) **tidak** memuat setelan ini. Yang kamu butuhkan halaman
-project:
+sebelah tiap toggle) tidak memuat setelan ini. Yang kamu butuhkan halaman
+**project**:
 
 ```
 https://vercel.com/<nama-akun>/revit-bot/settings/git
 ```
 
-1. Bagian **Production Branch** — tepat di bawah kotak "Connected Git
-   Repository" — isi dengan `claude/dual-lang-theme-telegram-guide-oix5c8`
-   → **Save**.
-2. Tab **Deployments** → deployment terbaru dari branch itu → titik tiga (`⋯`)
-   → **Promote to Production** (atau **Redeploy** kalau belum ada satu pun).
+1. **Production Branch** — tepat di bawah kotak "Connected Git Repository" —
+   isi nama branch di atas → **Save**.
+2. Tab **Deployments** → deployment terbaru dari branch itu → `⋯` →
+   **Promote to Production** (atau **Redeploy** kalau belum ada).
 
-Mengubah setelan saja tidak cukup: domain `revit-bot.vercel.app` hanya melayani
-deployment berlabel **Production**. Selama masih berlabel Preview, URL utamamu
-tetap 404.
-
-> Nama branch-nya panjang, tapi tidak berpengaruh ke hasil. Kalau nanti ingin
-> dirapikan jadi `main`, bisa kapan saja — bukan syarat apa pun.
+Domain utama hanya melayani deployment berlabel **Production**; selama masih
+Preview, URL-nya tetap 404.
 
 ---
 
-## Langkah 1 — Lengkapi environment variable
+## Langkah 2 — Environment variable
 
-Di Vercel baru ada dua. Yang kurang **empat**. Tambah lewat
-**Settings → Environment Variables**, pilih **Production and Preview**:
+Vercel → **Settings → Environment Variables**, semuanya untuk
+**Production and Preview**:
 
-| Nama | Isi | Dari mana |
-|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | `123456789:AAF…` | Pesan dari BotFather saat `/newbot`. Kalau hilang: `/mybots` → pilih bot → **API Token** |
-| `TELEGRAM_WEBHOOK_SECRET` | string acak | Buat sendiri, lihat di bawah |
-| `MACHINE_TOKEN` | string acak | Buat sendiri. Ini yang dipakai add-in Revit, bukan token bot |
-| `PANEL_URL` | `https://revit-bot.vercel.app/panel` | Untuk tombol Mini App |
+| Nama | Isi |
+|---|---|
+| `SUPABASE_URL` | dari Supabase → Settings → API |
+| `SUPABASE_SERVICE_ROLE_KEY` | idem. **Server-only** — jangan pernah masuk ke klien |
+| `TELEGRAM_BOT_TOKEN` | dari BotFather (`/mybots` → pilih bot → API Token) |
+| `TELEGRAM_WEBHOOK_SECRET` | acak, hanya `A-Z a-z 0-9 _ -` |
+| `MACHINE_TOKEN` | acak. Untuk add-in Revit, **bukan** token bot |
+| `PANEL_URL` | `https://revit-bot.vercel.app/panel` |
 
-Membuat dua token acak — jalankan di terminal mana saja:
+Tidak punya terminal untuk membuat string acak? Buka konsol browser (F12) dan
+jalankan:
 
-```bash
-# TELEGRAM_WEBHOOK_SECRET  (hanya A-Z a-z 0-9 _ - yang diizinkan Telegram)
-openssl rand -hex 32
-
-# MACHINE_TOKEN
-openssl rand -hex 32
+```js
+crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '')
 ```
 
-Simpan `MACHINE_TOKEN` di tempat aman — nanti dipakai lagi di PC Revit.
+Simpan `MACHINE_TOKEN` — nanti dipakai lagi di PC Revit.
 
-> **Setelah menambah env, WAJIB redeploy.** Environment variable hanya terbaca
-> saat build/boot; deployment lama tetap memakai nilai lama.
-> Vercel → **Deployments** → titik tiga di deployment terbaru → **Redeploy**.
+> **Setelah menambah env, WAJIB redeploy.** Env hanya terbaca saat deployment
+> dibuat; deployment lama tetap memakai nilai lama.
+> **Deployments** → `⋯` di deployment teratas → **Redeploy**.
+
+Ulangi Langkah 1 sampai `/api/health` menjawab `"missingEnv": []`.
 
 ---
 
-## Langkah 2 — Jalankan migrasi kedua
+## Langkah 3 — Migrasi database
 
-Tabelmu sudah sesuai `001_init.sql`. Ada satu migrasi lagi yang **tidak boleh
-dilewat**, karena menyangkut keamanan.
+Supabase → **SQL Editor** → tempel isi `supabase/migrations/001_init.sql` →
+**Run**. Lalu ulangi untuk `002_security.sql`.
 
-Supabase → **SQL Editor** → tempel isi `supabase/migrations/002_security.sql`
-→ **Run**. Isinya dua hal:
+Yang kedua tidak boleh dilewat. Isinya dua hal:
 
 1. Tabel `tg_updates` — kunci anti-duplikat. Telegram mengirim ulang update
    yang sama kalau webhook telat menjawab; tanpa tabel ini, satu `/pdf` bisa
    jalan dua kali.
-2. `enable row level security` untuk semua tabel, **tanpa policy apa pun.**
+2. `enable row level security` di semua tabel, **tanpa policy apa pun.**
    Aplikasi memakai service role key yang melewati RLS, jadi tidak ada yang
-   rusak. Tapi tanpa baris ini, siapa pun yang punya anon key — dan anon key
-   memang dibagikan ke klien — bisa membaca seluruh isi `bot_users` beserta
-   chat ID semua orang.
+   rusak. Tanpa baris itu, siapa pun yang punya anon key — dan anon key memang
+   dibagikan ke klien — bisa membaca seluruh `bot_users` beserta chat ID semua
+   orang.
+
+Hasil yang benar: `Success. No rows returned`.
 
 ---
 
-## Langkah 3 — Daftarkan dirimu sebagai admin
+## Langkah 4 — Pasang webhook + menu, satu URL
 
-Selama belum ada baris di `bot_users`, bot akan menjawab "kamu belum terdaftar"
-ke siapa pun, termasuk kamu.
+Buka di browser, ganti `<SECRET>` dengan isi `TELEGRAM_WEBHOOK_SECRET`:
 
-Cara tahu chat ID sendiri: kirim `/status` ke `@revitone_bot`. Balasannya
-menyertakan angka chat ID-mu. (Kalau bot belum menjawab sama sekali, lanjut
-dulu ke Langkah 4, baru kembali ke sini.)
+```
+https://revit-bot.vercel.app/api/admin/setup?secret=<SECRET>
+```
+
+Satu kunjungan itu mengerjakan semuanya:
+
+- `setWebhook` ke domain tempat endpoint itu sendiri berjalan, lengkap dengan
+  `secret_token`, `allowed_updates`, dan `drop_pending_updates`
+- menu command: daftar default, daftar `id`, daftar `en`
+- menu penuh untuk tiap admin di tabel `bot_users` (masih kosong sekarang —
+  itu wajar, lihat Langkah 6)
+- deskripsi profil bot dalam dua bahasa
+- tombol menu Mini App ke `PANEL_URL`
+
+Balasannya JSON berisi daftar apa saja yang dipasang, plus `warnings` untuk
+yang dilewati. Aman dibuka berkali-kali — semuanya menimpa, bukan menambah.
+
+> Endpoint ini dilindungi `TELEGRAM_WEBHOOK_SECRET`. Tanpa itu, siapa pun yang
+> menebak URL-nya bisa memindahkan webhook botmu ke server lain.
+
+**Verifikasi** — buka (ganti `<TOKEN>` dengan token bot):
+
+```
+https://api.telegram.org/bot<TOKEN>/getWebhookInfo
+```
+
+Yang kamu cari: `"pending_update_count": 0` dan **tidak ada**
+`last_error_message`. Kalau ada errornya, itu jawabannya — jangan menebak.
+
+---
+
+## Langkah 5 — Cari tahu chat ID-mu
+
+Kirim apa saja ke `@revitone_bot`, misalnya:
+
+```
+/status
+```
+
+Balasannya:
+
+```
+Kamu belum terdaftar. Minta admin menambahkan chat ID kamu: 123456789
+```
+
+Angka itu chat ID-mu. **Kalau bot diam saja**, webhook belum jalan — kembali ke
+Langkah 4 dan periksa `getWebhookInfo`.
+
+---
+
+## Langkah 6 — Daftarkan dirimu sebagai admin
 
 Supabase → **SQL Editor**:
 
@@ -134,85 +162,18 @@ insert into bot_users (chat_id, name, role)
 values (123456789, 'Bagus', 'admin');
 ```
 
-Ganti `123456789` dengan chat ID-mu. Rekan lain ditambahkan dengan cara yang
-sama, `role` diisi `'viewer'`.
+Ganti angkanya dengan chat ID dari Langkah 5. Rekan lain ditambahkan dengan
+cara sama, `role` diisi `'viewer'`.
+
+**Lalu buka lagi URL Langkah 4.** Sekarang tabel `bot_users` sudah berisi
+admin, jadi menu command admin ikut terpasang — sebelumnya dilewati karena
+belum ada admin untuk dituju.
+
+Terakhir, tutup dan buka lagi aplikasi Telegram: klien meng-cache menu command.
 
 ---
 
-## Langkah 4 — Pasang webhook
-
-Ganti dua nilai di bawah dengan milikmu, lalu jalankan:
-
-```bash
-export TG_TOKEN="123456789:AAF…"
-export TG_SECRET="hasil-openssl-tadi"
-
-curl -X POST "https://api.telegram.org/bot$TG_TOKEN/setWebhook" \
-  -H 'content-type: application/json' \
-  -d "{
-    \"url\": \"https://revit-bot.vercel.app/api/telegram/webhook\",
-    \"secret_token\": \"$TG_SECRET\",
-    \"allowed_updates\": [\"message\", \"callback_query\"],
-    \"drop_pending_updates\": true,
-    \"max_connections\": 20
-  }"
-```
-
-Periksa hasilnya:
-
-```bash
-curl "https://api.telegram.org/bot$TG_TOKEN/getWebhookInfo"
-```
-
-Yang kamu cari: `"pending_update_count": 0` dan **tidak ada**
-`last_error_message`. Kalau ada errornya, itu jawabannya — jangan menebak.
-
----
-
-## Langkah 5 — Cek kesiapan sebelum menguji dari HP
-
-Buka di browser:
-
-```
-https://revit-bot.vercel.app/api/health
-```
-
-Balasannya menyebut env mana yang masih kosong (hanya **nama**-nya, tidak
-pernah nilainya) dan apakah database terhubung:
-
-```jsonc
-{ "ready": true, "missingEnv": [], "database": "ok" }
-```
-
-Kalau `ready: false`, perbaiki dulu di sini. Menguji dari Telegram sebelum
-langkah ini hijau cuma membuang waktu — kamu akan menebak-nebak apakah
-masalahnya di env, database, atau Telegram.
-
----
-
-## Langkah 6 — Pasang menu command dua bahasa
-
-Di komputermu, di dalam folder repo:
-
-```bash
-npm install
-
-TELEGRAM_BOT_TOKEN="123456789:AAF…" \
-ADMIN_CHAT_IDS="123456789" \
-npm run set-commands
-```
-
-Ini memasang: menu default (Inggris), menu `id`, menu `en`, plus menu penuh
-berisi command admin **hanya untuk chat ID yang kamu sebut**. Sekalian
-deskripsi bot di profil, dalam dua bahasa.
-
-Setelah itu tutup dan buka lagi Telegram — klien meng-cache menu command.
-
----
-
-## Langkah 7 — Uji dari HP (belum perlu Revit)
-
-Kirim ke `@revitone_bot`:
+## Langkah 7 — Uji dari HP, belum perlu Revit
 
 ```
 /status
@@ -230,8 +191,7 @@ Antrean: 0 pending, 0 jalan
 ```
 
 Itu bukan kegagalan — itu **bukti seluruh rantai jalan**: Telegram → Vercel →
-Supabase → balik ke Telegram. PC memang offline karena add-in-nya belum
-dipasang.
+Supabase → balik ke Telegram. PC memang offline karena add-in-nya belum ada.
 
 Coba juga:
 
@@ -242,51 +202,35 @@ Coba juga:
 /theme dark    → preferensi tema panel
 ```
 
----
+Dan ketuk tombol **Panel** di sebelah kotak ketik untuk membuka Mini App.
 
-## Langkah 8 — Tombol panel (Mini App)
-
-BotFather → `/mybots` → `@revitone_bot` → **Bot Settings** → **Menu Button** →
-**Configure menu button** → kirim URL:
-
-```
-https://revit-bot.vercel.app/panel
-```
-
-Lalu beri nama tombolnya, misalnya `Panel`.
-
-Panel hanya bisa dibuka dari dalam Telegram: server memverifikasi tanda tangan
-HMAC `initData`. Membuka URL-nya langsung di browser akan menghasilkan 401 —
-itu memang perilakunya.
+> Membuka `revit-bot.vercel.app/panel` langsung di browser akan menampilkan
+> panel tanpa data — server menolak dengan 401 karena tidak ada tanda tangan
+> `initData` dari Telegram. Itu memang perilakunya, bukan kerusakan.
 
 ---
 
-## Langkah 9 — Add-in Revit (di PC Revit)
+## Langkah 8 — Add-in Revit (di PC Revit)
 
-Ini yang membuat `/status` berubah jadi hijau dan `/count`, `/levels`, `/pdf`
-benar-benar bekerja.
+Ini yang membuat `/status` berubah hijau dan `/count`, `/levels`, `/pdf`
+benar-benar bekerja. Langkah ini **butuh terminal** di PC Revit.
 
-**a. Build**
-
-Butuh .NET 8 SDK dan Revit 2025 terpasang. Di folder `addin/`:
+**a. Build** — perlu .NET 8 SDK dan Revit 2025 terpasang. **Tutup Revit dulu**,
+kalau terbuka DLL-nya terkunci dan build gagal.
 
 ```powershell
 dotnet build -c Release
 ```
 
 Build otomatis menyalin `.addin` + DLL ke
-`%APPDATA%\Autodesk\Revit\Addins\2025\`. **Tutup Revit dulu** — kalau terbuka,
-DLL-nya terkunci dan build gagal.
-
-Kalau Revit terpasang di lokasi lain:
+`%APPDATA%\Autodesk\Revit\Addins\2025\`. Revit di lokasi lain:
 
 ```powershell
 dotnet build -c Release -p:RevitDir="D:\Autodesk\Revit 2025\"
 ```
 
-**b. Pasang machine token**
-
-Di Windows PowerShell (bukan PowerShell 7), di folder `addin/`:
+**b. Pasang machine token** — Windows PowerShell (bukan PowerShell 7), di
+folder `addin/`:
 
 ```powershell
 .\set-token.ps1 -Token "isi-MACHINE_TOKEN-yang-tadi"
@@ -296,15 +240,13 @@ Token disimpan terenkripsi DPAPI di `%APPDATA%\RevitTelegramBridge\`, terikat
 ke akun Windows-mu. Ia **tidak** ada di dalam DLL — DLL bisa disalin siapa saja
 yang punya akses ke PC, dan string di dalamnya terbaca dengan Notepad.
 
-**c. Arahkan add-in ke server** (kalau domainmu berubah)
+**c. Arahkan ke server** (opsional, default sudah `revit-bot.vercel.app`):
 
 ```powershell
 [Environment]::SetEnvironmentVariable('REVIT_BRIDGE_URL', 'https://revit-bot.vercel.app', 'User')
 ```
 
-Default-nya sudah `https://revit-bot.vercel.app`, jadi langkah ini opsional.
-
-**d. Matikan sleep**
+**d. Matikan sleep:**
 
 ```powershell
 powercfg /change standby-timeout-ac 0
@@ -313,9 +255,7 @@ powercfg /change standby-timeout-ac 0
 PC yang tidur memutus polling walaupun Revit terbuka — dan gejalanya
 membingungkan: bot "kadang jalan kadang tidak".
 
-**e. Buka Revit, buka satu model, tunggu ~10 detik**
-
-Lalu dari HP:
+**e. Buka Revit, buka satu model, tunggu ~10 detik.** Lalu dari HP:
 
 ```
 /status     → 🟢 PC online, nama model muncul
@@ -325,14 +265,13 @@ Lalu dari HP:
 
 ---
 
-## Langkah 10 — Validasi yang menentukan
+## Langkah 9 — Validasi yang menentukan
 
 Jalankan `/count` sekali, lalu **bandingkan angkanya dengan schedule yang sudah
 ada di Revit.**
 
-- Angka **sama persis** → logika level sudah benar, hasil berikutnya bisa
-  dipercaya.
-- Angka **meleset** → hampir selalu satu dari dua hal:
+- **Sama persis** → logika level sudah benar, hasil berikutnya bisa dipercaya.
+- **Meleset** → hampir selalu satu dari dua hal:
   1. **Kategori family tidak seperti dugaan.** Banyak family fire alarm
      sebenarnya ter-load sebagai *Electrical Fixtures*. Pilih satu smoke
      detector di Revit, lihat kategorinya di Properties, lalu sesuaikan daftar
@@ -340,8 +279,8 @@ ada di Revit.**
   2. **Elemen di dalam link tidak terhitung.** Itu perilaku Revit
      (`FilteredElementCollector(doc)` tidak menembus link), bukan bug.
 
-Jangan lanjut mengundang orang sebelum langkah ini cocok. Angka yang salah
-lebih berbahaya daripada bot yang mati — orang mempercayainya.
+Jangan mengundang orang sebelum langkah ini cocok. Angka yang salah lebih
+berbahaya daripada bot yang mati — orang mempercayainya.
 
 ---
 
@@ -365,13 +304,16 @@ desk sambil memperbaikinya.
 
 | Gejala | Cek pertama |
 |---|---|
-| Semua URL 404 | Langkah 0 — branch produksi Vercel |
-| `/api/health` → `missingEnv` terisi | Langkah 1, lalu **redeploy** |
+| Semua URL 404 | Langkah 1 — deployment belum Production |
+| `/api/health` → `missingEnv` terisi | Langkah 2, lalu **redeploy** |
+| Panel tampil polos tanpa warna | Aset CSS 404 — pastikan deployment memakai commit terbaru |
 | Bot diam total | `getWebhookInfo` → `last_error_message` |
-| "kamu belum terdaftar" terus | Langkah 3 — baris di `bot_users` |
-| Menu `/` kosong / bahasa lama | Langkah 6, lalu restart Telegram |
+| `/api/admin/setup` → `forbidden` | `secret` di URL tidak sama dengan `TELEGRAM_WEBHOOK_SECRET` |
+| "kamu belum terdaftar" terus | Langkah 6 — baris di `bot_users` |
+| Menu `/` kosong / bahasa lama | Buka ulang URL Langkah 4, lalu restart Telegram |
+| Command admin tidak muncul di menu | Buka ulang URL Langkah 4 **setelah** baris admin ada |
 | `/status` tetap 🔴 padahal Revit terbuka | `%APPDATA%\RevitTelegramBridge\bridge.log` |
-| Panel 401 | Memang begitu di browser biasa — buka dari Telegram |
+| Panel 401 di browser | Memang begitu — buka dari dalam Telegram |
 
 Daftar lengkap: [TELEGRAM-BOT-GUIDE.id.md §16](./TELEGRAM-BOT-GUIDE.id.md#16-troubleshooting).
 
@@ -396,4 +338,4 @@ Empat command sudah ada: `/levels`, `/sheets`, `/count`, `/pdf`. Sisanya
 (`/tray`, `/panel`, `/find`, `/load`, `/png`, `/schedule`, `/warnings`) tinggal
 menambah satu berkas di `addin/Commands/` dan mendaftarkannya di
 `CommandHandler`. Server-nya sudah siap menerima semuanya — command yang belum
-ada di add-in akan dijawab "belum diimplementasi", bukan menggantung.
+ada di add-in dijawab "belum diimplementasi", bukan menggantung.
