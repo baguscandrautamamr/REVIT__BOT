@@ -44,33 +44,58 @@ public static class LevelResolver
         return ElementId.InvalidElementId;
     }
 
+    /// <summary>Semua level di model, diurutkan dari bawah ke atas.</summary>
+    public static List<Level> All(Document doc) =>
+        new FilteredElementCollector(doc)
+            .OfClass(typeof(Level))
+            .Cast<Level>()
+            .OrderBy(l => l.Elevation)
+            .ToList();
+
+    /// <summary>Nama persis, tanpa tebakan apa pun.</summary>
+    public static Level? FindExact(Document doc, string input) =>
+        All(doc).FirstOrDefault(l => string.Equals(l.Name, input, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>
     /// Cari level dari nama yang diketik user. Pencocokan longgar dengan sengaja:
     /// orang mengetik "L1" untuk level bernama "LANTAI 1".
     /// </summary>
-    public static Level? FindByName(Document doc, string input)
+    public static Level? FindByName(Document doc, string input) => Match(doc, input).Level;
+
+    /// <summary>
+    /// Sama seperti <see cref="FindByName"/>, tapi ikut melaporkan kandidat lain
+    /// yang sama-sama cocok.
+    ///
+    /// Ini penting karena tebakan angka bisa mendua tanpa terlihat mendua:
+    /// pada model dengan "Level 1" DAN "1st FLOOR", `/count L1` memilih salah
+    /// satunya secara sewenang-wenang, lalu melaporkan angka lantai yang lain
+    /// tanpa satu pun tanda bahwa itu bukan yang kamu maksud.
+    /// </summary>
+    public static (Level? Level, List<Level> Others) Match(Document doc, string input)
     {
-        var levels = new FilteredElementCollector(doc)
-            .OfClass(typeof(Level))
-            .Cast<Level>()
+        var levels = All(doc);
+        var none = new List<Level>();
+
+        var exact = levels
+            .Where(l => string.Equals(l.Name, input, StringComparison.OrdinalIgnoreCase))
             .ToList();
+        if (exact.Count > 0) return (exact[0], none);
 
-        var exact = levels.FirstOrDefault(l =>
-            string.Equals(l.Name, input, StringComparison.OrdinalIgnoreCase));
-        if (exact is not null) return exact;
-
-        var contains = levels.FirstOrDefault(l =>
-            l.Name.Contains(input, StringComparison.OrdinalIgnoreCase));
-        if (contains is not null) return contains;
+        var contains = levels
+            .Where(l => l.Name.Contains(input, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (contains.Count > 0) return (contains[0], contains.Skip(1).ToList());
 
         // "L1" / "l 1" → cocokkan angkanya saja.
-        var digits = new string(input.Where(char.IsDigit).ToArray());
+        var digits = Digits(input);
         if (digits.Length > 0)
         {
-            return levels.FirstOrDefault(l =>
-                new string(l.Name.Where(char.IsDigit).ToArray()) == digits);
+            var byDigits = levels.Where(l => Digits(l.Name) == digits).ToList();
+            if (byDigits.Count > 0) return (byDigits[0], byDigits.Skip(1).ToList());
         }
 
-        return null;
+        return (null, none);
     }
+
+    private static string Digits(string s) => new(s.Where(char.IsDigit).ToArray());
 }

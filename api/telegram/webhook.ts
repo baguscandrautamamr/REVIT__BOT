@@ -10,7 +10,7 @@
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { parseCommand, type CommandSpec } from '../_lib/commands';
+import { SERVER_SIDE, notImplemented, parseCommand, type CommandSpec } from '../_lib/commands';
 import * as db from '../_lib/db';
 import { ENV } from '../_lib/env';
 import { resolveLocale, translator, type Locale } from '../_lib/i18n';
@@ -32,12 +32,6 @@ import {
   verifyWebhookSecret,
 } from '../_lib/telegram';
 import { handleLang, handlePrefCallback, handleTheme } from '../_lib/preferences';
-
-/** Command yang dijawab server sendiri, tanpa menyentuh Revit. */
-const SERVER_SIDE = new Set([
-  'help', 'status', 'queue', 'lang', 'theme', 'panelapp',
-  'users', 'pause', 'resume', 'cancel',
-]);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).send('method not allowed');
@@ -119,6 +113,17 @@ async function onMessage(msg: any, updateId: number): Promise<void> {
     await serverSide(spec, user, machine, args, tgLang, locale);
     return;
   }
+
+  // Ditolak DI SINI, bukan setelah keliling ke Revit. Add-in memang menjawab
+  // "belum diimplementasi", tapi jawaban itu baru sampai setelah job melewati
+  // Supabase, polling, dan main thread Revit — dan kalau PC-nya kebetulan mati,
+  // baru setelah menggantung 10 menit lalu kedaluwarsa. Padahal jawabannya
+  // sudah pasti sejak awal.
+  if (notImplemented(spec)) {
+    await sendMessage(chatId, mdv2(t('errors.notImplemented', { cmd: '/' + spec.name })));
+    return;
+  }
+
   await enqueue(spec, user, machine, args, locale);
 }
 
@@ -299,6 +304,13 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
   const positional = args.filter((a) => !a.startsWith('--'));
   const flags = args.filter((a) => a.startsWith('--')).map((f) => f.slice(2));
 
+  // Command yang menerima SATU nama menggabungkan kembali seluruh token.
+  // Nama di proyek nyata mengandung spasi ("GROUND FLOOR", "PANEL SCHEDULE
+  // DB-UTILTY"), dan karena tidak ada argumen kedua yang bisa direbut, tidak
+  // ada yang hilang dengan menggabungkannya — sementara memakai token pertama
+  // saja diam-diam membuang sisanya.
+  const joined = positional.join(' ');
+
   switch (spec.name) {
     case 'levels':
     case 'warnings':
@@ -307,12 +319,21 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
       return { payload: {} };
 
     case 'sheets':
-      return { payload: { filter: positional[0] ?? null } };
+      return { payload: { filter: joined || null } };
 
     case 'count': {
-      if (!positional[0]) return { error: t('errors.missingArgs', { example }) };
+      if (!positional.length) return { error: t('errors.missingArgs', { example }) };
       return {
         payload: {
+          // `terms` yang dipakai add-in: ia punya daftar level DAN daftar
+          // kategori model, jadi hanya ia yang bisa memutuskan di mana nama
+          // level berakhir dan filter kategori dimulai. Server tidak bisa —
+          // dan tebakannya ("token pertama = level, kedua = kategori") membuat
+          // `/count GROUND FLOOR lighting` terbaca sebagai level "GROUND"
+          // dengan kategori "FLOOR", lalu menjawab "tidak ada elemen MEP di
+          // lantai ini" untuk lantai yang justru paling penuh.
+          terms: positional,
+          // Dipertahankan untuk add-in versi lama yang belum tahu `terms`.
           level: positional[0],
           category: positional[1] ?? null,
           detail: flags.includes('detail'),
@@ -321,20 +342,20 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
     }
 
     case 'tray':
-      if (!positional[0]) return { error: t('errors.missingArgs', { example }) };
-      return { payload: { level: positional[0], groupBy: 'comments' } };
+      if (!joined) return { error: t('errors.missingArgs', { example }) };
+      return { payload: { level: joined, groupBy: 'comments' } };
 
     case 'load':
-      if (!positional[0]) return { error: t('errors.missingArgs', { example }) };
-      return { payload: { level: positional[0] } };
+      if (!joined) return { error: t('errors.missingArgs', { example }) };
+      return { payload: { level: joined } };
 
     case 'panel':
-      if (!positional[0]) return { error: t('errors.missingArgs', { example }) };
-      return { payload: { panel: positional[0] } };
+      if (!joined) return { error: t('errors.missingArgs', { example }) };
+      return { payload: { panel: joined } };
 
     case 'find':
-      if (!positional[0]) return { error: t('errors.missingArgs', { example }) };
-      return { payload: { mark: positional[0] } };
+      if (!joined) return { error: t('errors.missingArgs', { example }) };
+      return { payload: { mark: joined } };
 
     case 'pdf':
     case 'png':
@@ -343,8 +364,8 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
       return { payload: { views: positional } };
 
     case 'schedule':
-      if (!positional[0]) return { error: t('errors.missingArgs', { example }) };
-      return { payload: { schedule: positional[0], format: 'csv' } };
+      if (!joined) return { error: t('errors.missingArgs', { example }) };
+      return { payload: { schedule: joined, format: 'csv' } };
 
     case 'setparam':
     case 'tag':

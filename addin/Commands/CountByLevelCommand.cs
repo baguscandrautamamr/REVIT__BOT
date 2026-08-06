@@ -33,22 +33,43 @@ public sealed class CountByLevelCommand : IBotCommand
 
     public ExecResult Run(Document doc, JsonElement payload)
     {
-        var input = payload.Str("level");
-        if (string.IsNullOrWhiteSpace(input)) return ExecResult.Fail("Level belum disebutkan.");
+        // `terms` = seluruh argumen apa adanya. Hanya di sini — di dalam Revit,
+        // dengan daftar level model di tangan — batas antara nama level dan
+        // filter kategori bisa ditentukan. Server tidak punya informasinya.
+        var terms = payload.StrList("terms");
+        if (terms.Count == 0)
+        {
+            var single = payload.Str("level");
+            if (!string.IsNullOrWhiteSpace(single)) terms.Add(single);
+            var legacy = payload.Str("category");
+            if (!string.IsNullOrWhiteSpace(legacy)) terms.Add(legacy);
+        }
+        if (terms.Count == 0) return ExecResult.Fail("Level belum disebutkan.");
 
-        var level = LevelResolver.FindByName(doc, input);
+        var (level, others, filter) = SplitLevelAndFilter(doc, terms);
         if (level is null)
-            return ExecResult.Fail($"Level \"{input}\" tidak ditemukan. Ketik /levels untuk daftar nama persis.");
+        {
+            return ExecResult.Fail(
+                $"Level \"{string.Join(" ", terms)}\" tidak ditemukan. " +
+                "Ketik /levels untuk daftar nama persis.");
+        }
 
-        var filter = payload.Str("category");
         var detail = payload.Flag("detail");
 
         var sb = new StringBuilder();
         sb.AppendLine(level.Name);
+        if (others.Count > 0)
+        {
+            // Tebakan yang mendua harus terlihat. Diam-diam memilih satu lalu
+            // melaporkan angkanya sebagai fakta adalah cara tercepat membuat
+            // orang percaya pada angka lantai yang salah.
+            sb.AppendLine($"(cocok juga: {string.Join(", ", others.Select(l => l.Name))} — sebut nama lengkapnya kalau keliru)");
+        }
         sb.AppendLine();
 
         var total = 0;
         var anyRow = false;
+        var matchedCategory = false;
 
         foreach (var (label, category) in Categories)
         {
@@ -58,6 +79,7 @@ public sealed class CountByLevelCommand : IBotCommand
             {
                 continue;
             }
+            matchedCategory = true;
 
             // Elemen di dalam link TIDAK ikut terhitung oleh collector ini.
             // Itu perilaku Revit, bukan bug — sebutkan kalau angkanya dibandingkan
@@ -94,12 +116,131 @@ public sealed class CountByLevelCommand : IBotCommand
             }
         }
 
-        if (!anyRow) return ExecResult.Success($"{level.Name}\n\nTidak ada elemen MEP di lantai ini.");
+        // Tiga sebab yang SANGAT berbeda dulu dijawab dengan satu kalimat yang
+        // sama, "Tidak ada elemen MEP di lantai ini" — dan yang paling sering
+        // terjadi bukan lantainya kosong, melainkan filternya salah ketik.
+        if (!matchedCategory)
+        {
+            return ExecResult.Success(
+                $"{level.Name}\n\nTidak ada kategori yang cocok dengan \"{filter}\".\n\n" +
+                $"Kategori yang bisa dipakai:\n{string.Join("\n", Categories.Select(c => "· " + c.Label))}");
+        }
+
+        if (!anyRow || total == 0)
+        {
+            sb.AppendLine("Tidak ada elemen MEP di lantai ini.");
+            sb.AppendLine();
+            sb.Append(Diagnose(doc, level, filter));
+            return ExecResult.Success(sb.ToString().TrimEnd());
+        }
 
         sb.AppendLine();
         sb.Append($"Total {total} elemen");
 
         return ExecResult.Success(sb.ToString());
+    }
+
+    /// <summary>
+    /// Pisahkan nama level dari filter kategori.
+    ///
+    /// Server memecah argumen pada spasi dan tidak bisa tahu di mana nama level
+    /// berakhir — `/count GROUND FLOOR lighting` dulu terbaca sebagai level
+    /// "GROUND" dengan kategori "FLOOR", lalu menjawab "tidak ada elemen MEP di
+    /// lantai ini" untuk lantai yang justru paling penuh. Di sini daftar level
+    /// model tersedia, jadi batasnya bisa ditentukan, bukan ditebak.
+    ///
+    /// Urutannya sengaja dari yang paling pasti ke yang paling longgar.
+    /// </summary>
+    private static (Level? Level, List<Level> Others, string? Filter) SplitLevelAndFilter(
+        Document doc, List<string> terms)
+    {
+        // 1. Nama PERSIS, prefiks terpanjang dulu: "GROUND FLOOR" + "lighting"
+        //    menang atas "GROUND" + "FLOOR lighting".
+        for (var take = terms.Count; take >= 2; take--)
+        {
+            var candidate = string.Join(" ", terms.Take(take));
+            var level = LevelResolver.FindExact(doc, candidate);
+            if (level is not null) return (level, new List<Level>(), Rest(terms, take));
+        }
+
+        // 2. Nama sebagian, prefiks terpanjang dulu — tanpa tebakan angka.
+        //    Tebakan angka dilarang di sini: pada "/count l1 lighting" ia akan
+        //    menelan "lighting" ke dalam nama level dan mencocokkannya lewat
+        //    angka "1", lalu filternya hilang tanpa jejak.
+        for (var take = terms.Count; take >= 2; take--)
+        {
+            var candidate = string.Join(" ", terms.Take(take));
+            var (level, others) = LevelResolver.Match(doc, candidate);
+            if (level is not null &&
+                level.Name.Contains(candidate, StringComparison.OrdinalIgnoreCase))
+            {
+                return (level, others, Rest(terms, take));
+            }
+        }
+
+        // 3. Token pertama saja, dengan seluruh tebakan — termasuk angka.
+        //    Ini yang membuat "/count L1" tetap bekerja.
+        var (first, firstOthers) = LevelResolver.Match(doc, terms[0]);
+        return (first, firstOthers, Rest(terms, 1));
+    }
+
+    private static string? Rest(List<string> terms, int take) =>
+        terms.Count > take ? string.Join(" ", terms.Skip(take)) : null;
+
+    /// <summary>
+    /// Kenapa hasilnya nol.
+    ///
+    /// "Tidak ada elemen MEP di lantai ini" adalah jawaban yang buntu ketika
+    /// kamu sedang menatap lantai yang penuh lampu di layar Revit. Dua angka di
+    /// bawah ini memisahkan tiga kemungkinan yang selama ini tidak bisa
+    /// dibedakan: salah lantai, elemennya memang tidak ada, atau levelnya tidak
+    /// terbaca dari elemen (`LevelId` kosong — jebakan klasik elemen MEP).
+    /// </summary>
+    private static string Diagnose(Document doc, Level level, string? filter)
+    {
+        var inModel = 0;
+        var withoutLevel = 0;
+        var byLevel = new Dictionary<string, int>();
+
+        foreach (var (label, category) in Categories)
+        {
+            if (!string.IsNullOrWhiteSpace(filter) &&
+                !label.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
+                !category.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            foreach (var e in new FilteredElementCollector(doc)
+                         .OfCategory(category)
+                         .WhereElementIsNotElementType())
+            {
+                inModel++;
+                var id = LevelResolver.Resolve(e);
+                if (id == ElementId.InvalidElementId)
+                {
+                    withoutLevel++;
+                    continue;
+                }
+                var name = doc.GetElement(id)?.Name ?? "(?)";
+                byLevel[name] = byLevel.GetValueOrDefault(name) + 1;
+            }
+        }
+
+        if (inModel == 0) return "Di seluruh model pun kategori ini tidak ada isinya.";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Tapi di seluruh model ada {inModel} elemen kategori ini:");
+        foreach (var row in byLevel.OrderByDescending(r => r.Value).Take(8))
+        {
+            sb.AppendLine($"{row.Value,6}  {row.Key}");
+        }
+        if (withoutLevel > 0)
+        {
+            sb.AppendLine($"{withoutLevel,6}  (levelnya tidak terbaca dari elemen)");
+        }
+        sb.Append($"Sebut salah satu nama di atas persis seperti tertulis, mis. /count \"{byLevel.Keys.FirstOrDefault() ?? level.Name}\"");
+        return sb.ToString();
     }
 
     private static double LengthMetres(Element e)
