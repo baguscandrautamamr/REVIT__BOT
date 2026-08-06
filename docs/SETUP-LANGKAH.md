@@ -403,6 +403,31 @@ Token bot tidak pernah muncul di URL — dibaca dari env di sisi server.
 | Command admin tidak muncul di menu | Buka ulang URL Langkah 4 **setelah** baris admin ada |
 | `/status` tetap 🔴 padahal Revit terbuka | `%APPDATA%\RevitTelegramBridge\bridge.log` |
 | Panel 401 di browser | Memang begitu — buka dari dalam Telegram |
+| **`/pdf` selesai tapi berkasnya "gagal dikirim"** | `/api/health` → bagian `storage` dan `supabaseKeyKind`. Lihat di bawah |
+
+### `"storage": "missing"` — hasil export tidak pernah sampai
+
+Berkas di atas 3 MB tidak lewat Vercel sama sekali; ia diunggah add-in langsung
+ke bucket `job-files` di Supabase Storage. Kalau bucket itu belum ada, `/pdf`
+selesai di Revit lalu berkasnya berhenti di tengah jalan — sementara seluruh
+bagian lain bot terlihat sehat sempurna.
+
+Server membuat bucket-nya sendiri: cukup buka `/api/admin/setup?secret=…`
+sekali, atau jalankan ulang command export-nya — export besar berikutnya akan
+memasangnya sebelum mengunggah.
+
+Yang perlu dibaca lebih dulu di `/api/health`:
+
+| Isinya | Artinya |
+|---|---|
+| `"storageDetail"` menyebut `/api/admin/setup` | Bucket-nya memang belum ada. Buka URL itu sekali |
+| `"supabaseKeyKind": "anon"` | `SUPABASE_SERVICE_ROLE_KEY` diisi **anon key**. Storage menolak seluruhnya walau `database` tetap `ok`. Ganti dengan service_role key, lalu **Redeploy** |
+| `"supabaseKeyKind": "publishable"` | Sama — yang dibutuhkan secret key (`sb_secret_…`), bukan `sb_publishable_…` |
+| `"storageDetail": "HTTP 4xx …"` lain | Isi balasan Supabase ikut dicetak apa adanya di situ — itu alasan sebenarnya |
+
+`/api/admin/diag?secret=…` melaporkan hal yang sama di bagian `storage`,
+lengkap dengan `keyKind`. Nilai kuncinya sendiri tidak pernah ikut keluar —
+hanya jenisnya.
 
 Daftar lengkap: [TELEGRAM-BOT-GUIDE.id.md §16](./TELEGRAM-BOT-GUIDE.id.md#16-troubleshooting).
 

@@ -9,7 +9,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import * as db from './_lib/db';
 import { WEBHOOK_SECRET_RULE, missingEnv, webhookSecretValid } from './_lib/env';
-import { bucketReady } from './_lib/storage';
+import { bucketReady, keyKind } from './_lib/storage';
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
   const missing = missingEnv();
@@ -53,6 +53,12 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     // di Revit lalu berkasnya tidak pernah sampai — jalankan migrasi 003.
     storage,
     storageDetail,
+    // JENIS kunci Supabase, bukan nilainya. Selain 'service_role' dan 'secret'
+    // artinya Storage API akan menolak apa pun yang dilakukan server ini —
+    // sementara `database` di atas bisa saja tetap 'ok', karena PostgREST
+    // menjawab anon key untuk tabel yang policy-nya longgar. Kombinasi
+    // "database ok + storage missing" nyaris selalu berujung ke baris ini.
+    supabaseKeyKind: keyKind(),
     time: new Date().toISOString(),
   });
 }
