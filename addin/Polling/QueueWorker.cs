@@ -24,18 +24,36 @@ public sealed class QueueWorker
     private readonly CommandHandler _handler;
     private readonly CancellationTokenSource _cts = new();
 
+    private Task? _loop;
+    private bool _stopped;
+
     public QueueWorker(ExternalEvent externalEvent, CommandHandler handler)
     {
         _externalEvent = externalEvent;
         _handler = handler;
     }
 
-    public void Start() => _ = Task.Run(() => LoopAsync(_cts.Token));
+    public void Start() => _loop = Task.Run(() => LoopAsync(_cts.Token));
 
+    /// <summary>
+    /// Dipanggil dari OnShutdown, jadi TIDAK boleh memblokir: Revit sedang
+    /// menutup diri dan loop-nya mungkin masih menunggu HTTP sampai 30 detik.
+    ///
+    /// Dispose sengaja ditunda sampai loop benar-benar keluar. Membuang
+    /// CancellationTokenSource sementara token-nya masih dipegang `Task.Delay`
+    /// melempar ObjectDisposedException di thread latar — exception yang muncul
+    /// tepat saat Revit ditutup, jadi mudah sekali disalahartikan sebagai
+    /// add-in yang membuat Revit crash saat keluar.
+    /// </summary>
     public void Stop()
     {
+        if (_stopped) return;
+        _stopped = true;
+
         _cts.Cancel();
-        _cts.Dispose();
+
+        if (_loop is null) _cts.Dispose();
+        else _loop.ContinueWith(_ => _cts.Dispose(), TaskScheduler.Default);
     }
 
     private async Task LoopAsync(CancellationToken ct)

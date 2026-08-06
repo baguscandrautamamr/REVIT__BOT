@@ -23,8 +23,12 @@ public sealed class CommandHandler : IExternalEventHandler
         {
             new LevelsCommand(),
             new SheetsCommand(),
+            new WarningsCommand(),
             new CountByLevelCommand(),
+            new TrayCommand(),
+            new FindByMarkCommand(),
             new ExportPdfCommand(),
+            new ExportScheduleCommand(),
         }.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
     }
 
