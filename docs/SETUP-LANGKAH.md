@@ -24,47 +24,48 @@ tidak dipakai. Tidak perlu diutak-atik lagi.
 
 ---
 
-## Langkah 0 — Vercel harus punya kode untuk di-deploy
+## Langkah 0 — Pastikan Vercel sudah men-deploy sesuatu
 
-Ini yang paling penting dan paling mudah terlewat: **repo GitHub-mu belum punya
-branch `main`.** Seluruh kode ada di branch `claude/dual-lang-theme-telegram-guide-oix5c8`.
-Selama Vercel menunggu branch produksi yang belum ada, tidak ada apa pun yang
-ter-deploy — dan setiap URL akan 404, termasuk webhook.
+Repo ini tidak punya branch `main`. Seluruh kode ada di
+`claude/dual-lang-theme-telegram-guide-oix5c8`.
 
-Semua dikerjakan di dashboard Vercel — **tidak perlu terminal, tidak perlu Git
-di komputermu.**
+**Itu kemungkinan besar bukan masalah.** GitHub menjadikan branch pertama yang
+di-push sebagai *default branch*, dan Vercel mengambil Production Branch dari
+default branch repo saat project dihubungkan. Jadi biasanya sudah benar sendiri.
 
-**1. Arahkan branch produksi**
-
-Vercel → project `revit-bot` → **Settings** → **Git** → bagian
-**Production Branch** → ganti isinya jadi:
+**Cara memastikan — tanpa masuk Settings sama sekali.** Buka di browser:
 
 ```
-claude/dual-lang-theme-telegram-guide-oix5c8
+https://revit-bot.vercel.app/api/health
 ```
 
-→ **Save**.
+| Yang muncul | Artinya |
+|---|---|
+| JSON `{"ready":…,"missingEnv":[…]}` | Deploy sudah jalan. **Langkah 0 selesai**, lanjut ke Langkah 1 |
+| `404: NOT_FOUND` | Deployment-nya belum berlabel Production — perbaiki di bawah |
 
-**2. Jadikan deployment-nya produksi**
+### Kalau 404
 
-Mengubah setelan di atas tidak otomatis men-deploy apa pun. Buka tab
-**Deployments**, cari deployment terbaru dari branch itu — kemungkinan besar
-sudah ada, berlabel **Preview**, karena Vercel membangunnya otomatis saat
-branch-nya di-push.
+Halaman **Settings → Git di level tim** (ciri: ada tulisan "Manage projects" di
+sebelah tiap toggle) **tidak** memuat setelan ini. Yang kamu butuhkan halaman
+project:
 
-- Kalau **ada**: titik tiga (`⋯`) di sebelahnya → **Promote to Production**.
-- Kalau **belum ada**: titik tiga → **Redeploy**, pilih branch tersebut.
+```
+https://vercel.com/<nama-akun>/revit-bot/settings/git
+```
 
-**3. Pastikan berhasil**
+1. Bagian **Production Branch** — tepat di bawah kotak "Connected Git
+   Repository" — isi dengan `claude/dual-lang-theme-telegram-guide-oix5c8`
+   → **Save**.
+2. Tab **Deployments** → deployment terbaru dari branch itu → titik tiga (`⋯`)
+   → **Promote to Production** (atau **Redeploy** kalau belum ada satu pun).
 
-Deployment paling atas harus berlabel **Production** dan menunjuk ke branch
-tadi. Domain `revit-bot.vercel.app` hanya melayani deployment berlabel
-Production — selama masih Preview, URL utamamu tetap 404.
+Mengubah setelan saja tidak cukup: domain `revit-bot.vercel.app` hanya melayani
+deployment berlabel **Production**. Selama masih berlabel Preview, URL utamamu
+tetap 404.
 
-> Nama branch-nya memang panjang. Itu tidak berpengaruh apa pun ke hasil —
-> Vercel tidak peduli namanya. Kalau nanti ingin merapikannya jadi `main`,
-> tinggal buat branch `main` dari branch ini dan kembalikan setelan Production
-> Branch — kapan saja, tidak harus sekarang.
+> Nama branch-nya panjang, tapi tidak berpengaruh ke hasil. Kalau nanti ingin
+> dirapikan jadi `main`, bisa kapan saja — bukan syarat apa pun.
 
 ---
 
