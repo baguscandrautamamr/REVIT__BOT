@@ -1,0 +1,14 @@
+{
+  "//": [
+    "Berkas ini ada semata-mata untuk MEMBATALKAN \"type\": \"module\" milik package.json root, khusus untuk fungsi di dalam api/.",
+    "",
+    "Tanpa ini seluruh endpoint menjawab FUNCTION_INVOCATION_FAILED di Vercel, dan lognya berbunyi ERR_MODULE_NOT_FOUND. Sebabnya: builder @vercel/node menentukan format modul dengan",
+    "  isEsm = ext === '.mjs' || ext === '.mts' || pkg.type === 'module' && ['.js','.ts','.tsx'].includes(ext)",
+    "lalu MEMUATNYA sebagai ESM native, bukan hasil bundling. Resolver ESM Node mewajibkan path relatif ditulis lengkap dengan ekstensi, sementara seluruh repo ini menulis './_lib/db'. Setiap import antar-berkas gagal, jadi fungsinya mati sebelum satu baris pun jalan.",
+    "",
+    "`pkg` diambil dengan walkParentDirs mulai dari folder entrypoint, jadi package.json TERDEKAT yang menang — dan itu berkas ini. Root tetap \"type\": \"module\" supaya scripts/ tetap bisa memakai top-level await dan import.meta.url.",
+    "",
+    "Jangan menambahkan top-level await atau import.meta ke mana pun di dalam api/: keduanya butuh ESM dan akan gagal di sini."
+  ],
+  "type": "commonjs"
+}
