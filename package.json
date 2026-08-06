@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Telegram bot bridge for Revit electrical models — dual language (ID/EN), dual theme.",
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p api --noEmit",
     "check:i18n": "tsx scripts/check-i18n.ts",
     "check:commands": "tsx scripts/check-commands.ts",
     "check:runtime": "tsx scripts/check-runtime.ts",

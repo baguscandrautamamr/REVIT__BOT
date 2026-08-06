@@ -14,5 +14,7 @@
     "verbatimModuleSyntax": true,
     "allowJs": false
   },
-  "include": ["api/**/*.ts", "scripts/**/*.ts"]
+  // api/ punya tsconfig sendiri: hasil compile-nya HARUS CommonJS, dan `module`
+  // di sini ("ESNext") akan mematikan seluruh endpoint. Lihat api/tsconfig.json.
+  "include": ["scripts/**/*.ts"]
 }

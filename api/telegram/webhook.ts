@@ -31,7 +31,7 @@ import {
   sendMessage,
   verifyWebhookSecret,
 } from '../_lib/telegram';
-import { handleLang, handlePrefCallback, handleTheme } from './preferences';
+import { handleLang, handlePrefCallback, handleTheme } from '../_lib/preferences';
 
 /** Command yang dijawab server sendiri, tanpa menyentuh Revit. */
 const SERVER_SIDE = new Set([

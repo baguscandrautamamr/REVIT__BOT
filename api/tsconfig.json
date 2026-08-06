@@ -1,0 +1,33 @@
+{
+  "//": [
+    "Berkas ini menentukan FORMAT MODUL hasil compile untuk seluruh api/, dan itu",
+    "satu-satunya alasan ia ada. Jangan hapus, jangan ubah `module`.",
+    "",
+    "@vercel/node meng-compile setiap .ts memakai tsconfig TERDEKAT ke entrypoint",
+    "(ts.findConfigFile naik dari folder berkas), lalu MENJALANKAN hasilnya apa",
+    "adanya — tidak ada bundling. `module` di tsconfig root adalah \"ESNext\", jadi",
+    "tanpa berkas ini api/health.ts keluar sebagai `import * as db from './_lib/db'`",
+    "sementara api/package.json menyatakan \"type\": \"commonjs\". Node menolaknya:",
+    "  SyntaxError: Cannot use import statement outside a module",
+    "dan SETIAP endpoint menjawab FUNCTION_INVOCATION_FAILED sebelum satu baris",
+    "handler pun jalan. Mengganti api/package.json ke \"module\" tidak menolong:",
+    "import relatif di repo ini ditulis tanpa ekstensi ('./_lib/db'), yang dilarang",
+    "resolver ESM Node — hasilnya ERR_MODULE_NOT_FOUND, mati juga.",
+    "",
+    "Jadi keduanya harus sepakat CommonJS: berkas ini mengatur BENTUK hasil compile,",
+    "api/package.json mengatur CARA Node memuatnya. `scripts/check-runtime.ts`",
+    "membuktikan kesepakatan itu dengan benar-benar memuat hasil compile-nya.",
+    "",
+    "tsconfig root tetap ESNext supaya scripts/ bisa memakai import.meta.url."
+  ],
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Node me-require() hasilnya sebagai CommonJS — lihat catatan di atas.
+    "module": "CommonJS",
+    // "Bundler" hanya sah untuk module ES2015+, dan tidak ada bundler di sini.
+    "moduleResolution": "Node10",
+    // verbatimModuleSyntax melarang sintaks ESM pada emit CommonJS.
+    "verbatimModuleSyntax": false
+  },
+  "include": ["**/*.ts"]
+}
