@@ -19,21 +19,14 @@ public sealed class ExportDwgCommand : IBotCommand
         var wanted = payload.StrList("views");
         if (wanted.Count == 0) return ExecResult.Fail("Sheet belum disebutkan.");
 
-        var matched = new List<ViewSheet>();
-        var missing = new List<string>();
-
-        foreach (var name in wanted)
-        {
-            var sheet = ViewFinder.Sheet(doc, name);
-            if (sheet is null) missing.Add(name);
-            else if (!matched.Contains(sheet)) matched.Add(sheet);
-        }
+        var picked = ViewFinder.ResolveSheets(doc, wanted);
+        var matched = picked.Matched;
 
         if (matched.Count == 0)
         {
             var names = ViewFinder.Sheets(doc).Select(s => $"{s.SheetNumber} — {s.Name}");
             return ExecResult.Fail(
-                $"Sheet tidak ditemukan: {string.Join(", ", missing)}\n\nYang ada:\n{ViewFinder.Suggest(names)}");
+                $"Sheet tidak ditemukan.{picked.Notes()}\n\nYang ada:\n{ViewFinder.Suggest(names)}");
         }
 
         using var workspace = new ExportWorkspace("dwg");
@@ -60,8 +53,8 @@ public sealed class ExportDwgCommand : IBotCommand
         var file = workspace.Collect("dwg", $"{baseName}.zip");
         if (file is null) return ExecResult.Fail("Export selesai tapi berkas DWG tidak ditemukan.");
 
-        var text = $"{matched.Count} sheet: {string.Join(", ", matched.Select(s => s.SheetNumber))}";
-        if (missing.Count > 0) text += $"\nDilewati (tidak ditemukan): {string.Join(", ", missing)}";
+        var text = $"{matched.Count} sheet: {string.Join(", ", matched.Select(s => s.SheetNumber))}"
+                 + picked.Notes();
 
         return ExecResult.WithFile(text, file.Value.Name, file.Value.Bytes);
     }
