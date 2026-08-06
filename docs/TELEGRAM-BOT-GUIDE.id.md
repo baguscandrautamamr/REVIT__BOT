@@ -289,6 +289,7 @@ Kolom **Alias**: bisa diketik sebagai ganti nama kanonik.
 | `/levels` | `/lantai`, `/level` | viewer | — | Daftar level beserta elevasi. Pakai ini untuk tahu nama persis sebelum `/count` |
 | `/sheets` | `/lembar` | viewer | `[filter]` | Daftar sheet + revisi terakhir. Filter opsional mencocokkan nomor/nama |
 | `/series` | `/seri`, `/grup` | viewer | `[discipline]` | Grup sheet (`ACT SHEET SERIES`) + jumlah + baris `/pdf --series` siap salin. `--detail` menambahkan nomor & nama tiap sheet |
+| `/views` | `/view`, `/tampilan` | viewer | `[filter]` | Nama view 3D + baris `/png` siap salin. `--all` menampilkan semua jenis view (sheet, denah, drafting) |
 | `/warnings` | `/peringatan` | viewer | — | Jumlah warning aktif + 10 teratas |
 | `/queue` | `/antrean`, `/antrian` | viewer | — | Antrean saat ini beserta posisi command milikmu |
 | `/help` | `/bantuan` | viewer | — | Daftar command sesuai role, dalam bahasa aktif |

@@ -103,23 +103,12 @@ public sealed class ExportPngCommand : IBotCommand
         if (views3d.Count == 0 && only3d)
             return ExecResult.Fail($"{head}\n\nModel ini tidak punya satu pun view 3D.");
 
-        var groups = only3d
-            ? new[] { ("View 3D", views3d.Select(v => v.Name)) }
-            : new[]
-            {
-                ("View 3D", views3d.Select(v => v.Name)),
-                ("Sheet", ViewFinder.Sheets(doc).Select(s => s.SheetNumber)),
-                ("View lain", ViewFinder.Printable(doc)
-                    .Where(v => v is not ViewSheet and not View3D)
-                    .Select(v => v.Name)),
-            };
-
-        var example = views3d.Count > 0 ? views3d[0].Name : "NAMA VIEW";
-
+        // Daftar yang sama persis dengan /views — sengaja satu sumber. Dua
+        // salinan berarti daftar di sini bisa menyebut view yang tidak disebut
+        // /views, dan orang yang membandingkan keduanya tidak punya cara tahu
+        // mana yang benar.
         return ExecResult.Fail(
-            $"{head}\n\n{ViewFinder.SuggestGroups(10, groups)}\n\n" +
-            "Nama yang mengandung spasi HARUS dikutip:\n" +
-            $"/png \"{example}\"\n" +
-            "Cuma mau view 3D saja: /png --3d");
+            $"{head}\n\n{ViewsCommand.Report(doc, null, all: !only3d)}\n\n" +
+            "Daftar ini juga bisa diminta kapan saja: /views");
     }
 }

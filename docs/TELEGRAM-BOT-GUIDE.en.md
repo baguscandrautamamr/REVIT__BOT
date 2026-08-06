@@ -288,6 +288,7 @@ Re-run it whenever `api/_lib/commands.ts` or an i18n catalog changes.
 | `/levels` | `/lantai`, `/level` | viewer | — | Levels with elevations. Use it to learn exact names before `/count` |
 | `/sheets` | `/lembar` | viewer | `[filter]` | Sheets + latest revision. Optional filter matches number/name |
 | `/series` | `/seri`, `/grup` | viewer | `[discipline]` | Sheet groups (`ACT SHEET SERIES`) + counts + ready-to-copy `/pdf --series` lines. `--detail` adds each sheet number & name |
+| `/views` | `/view`, `/tampilan` | viewer | `[filter]` | 3D view names + ready-to-copy `/png` lines. `--all` shows every view type (sheets, plans, drafting) |
 | `/warnings` | `/peringatan` | viewer | — | Active warning count + top 10 |
 | `/queue` | `/antrean` | viewer | — | Current queue including your position |
 | `/help` | `/bantuan` | viewer | — | Commands for your role, in your active language |

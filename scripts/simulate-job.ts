@@ -738,6 +738,23 @@ async function main() {
       (seriesDetail?.payload as Record<string, unknown>)?.detail === true,
       JSON.stringify(seriesDetail?.payload));
 
+    // /views: pasangan /series untuk view. Tanpa flag apa pun, dan bisa
+    // ditekan dari menu "/" Telegram.
+    const views = await typed('/views', 15);
+    check('/views meminta daftar view 3D',
+      views !== undefined && (views.payload as Record<string, unknown>)?.all === false,
+      JSON.stringify(views?.payload));
+
+    const viewsAll = await typed('/view —all', 16);
+    check('alias /view + --all lewat em dash',
+      (viewsAll?.payload as Record<string, unknown>)?.all === true,
+      JSON.stringify(viewsAll?.payload));
+
+    const viewsFilter = await typed('/tampilan LIGHTING', 17);
+    check('alias /tampilan + saringan nama',
+      (viewsFilter?.payload as Record<string, unknown>)?.filter === 'LIGHTING',
+      JSON.stringify(viewsFilter?.payload));
+
     // /png tanpa argumen BUKAN kesalahan: nama view 3D tidak bisa ditebak dan
     // hanya tertulis di browser tree Revit, jadi yang dibutuhkan orangnya adalah
     // daftarnya — bukan balasan "argumen kurang".

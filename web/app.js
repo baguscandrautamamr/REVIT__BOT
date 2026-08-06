@@ -23,6 +23,7 @@ const COMMANDS = [
   { section: 'info',   name: 'levels',   role: 'viewer' },
   { section: 'info',   name: 'sheets',   role: 'viewer' },
   { section: 'info',   name: 'series',   role: 'viewer' },
+  { section: 'info',   name: 'views',    role: 'viewer' },
   { section: 'info',   name: 'warnings', role: 'viewer' },
   { section: 'info',   name: 'queue',    role: 'viewer' },
   { section: 'info',   name: 'help',     role: 'viewer' },

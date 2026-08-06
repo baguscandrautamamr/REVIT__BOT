@@ -66,7 +66,7 @@ addin/                DLL siap pasang ada di tab Actions → workflow "addin"
   App.cs            OnStartup: buat ExternalEvent, start worker
   Polling/          loop polling — TANPA Revit API
   Events/           IExternalEventHandler — main thread
-  Commands/         14 command + ViewFinder/LevelResolver/Layout (aturan bersama)
+  Commands/         16 command + ViewFinder/SheetGroups/Layout (aturan bersama)
   Services/         BridgeClient (HTTP), DialogSuppressor, TokenStore, Log
   set-token.ps1     simpan machine token terenkripsi DPAPI
 web/
@@ -101,6 +101,7 @@ Sheet di proyek nyata sudah dikelompokkan lewat parameter proyek — di sini
 atas pengelompokan itu, jadi tidak ada yang perlu mengetik 18 nomor sheet:
 
 ```bash
+/views                        # nama view 3D apa saja + perintah /png siap salin
 /series                       # grup apa saja yang ada + perintah siap salin
 /series --detail              # sama, plus nomor & nama tiap sheet
 /pdf --series "GENERAL-LV"    # satu grup → SATU PDF, dinamai menurut grupnya

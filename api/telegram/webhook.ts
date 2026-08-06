@@ -341,6 +341,11 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
     case 'ifc':
       return { payload: {} };
 
+    // Daftar view 3D. Argumennya menyaring per nama; `--all` menampilkan
+    // seluruh jenis view, bukan cuma yang 3D.
+    case 'views':
+      return { payload: { filter: joined || null, all: flags.includes('all') } };
+
     // Argumennya, kalau ada, menyaring per discipline: `/series F_UTILITY`.
     // `--detail` menambahkan nomor + nama tiap sheet di dalam grupnya.
     case 'series':

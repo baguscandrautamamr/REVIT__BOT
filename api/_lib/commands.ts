@@ -85,6 +85,16 @@ export const COMMANDS: CommandSpec[] = [
     aliases: { id: ['seri', 'grup'] },
     usage: { id: '/series · /series D_FINISHED GOOD WAREHOUSE', en: '/series · /series D_FINISHED GOOD WAREHOUSE' },
   },
+  // Pasangan /series untuk view, dengan alasan yang sama: nama view 3D hanya
+  // tertulis di browser tree Revit. Daftar itu memang sudah muncul saat /png
+  // gagal, tapi mengandalkan kegagalan untuk mendapat informasi berarti orangnya
+  // harus salah dulu sebelum boleh tahu — dan ia tidak punya cara menebak kata
+  // apa yang harus diketik supaya gagalnya cukup informatif.
+  {
+    name: 'views', role: 'viewer', section: 'info', inMenu: true, addin: true,
+    aliases: { id: ['view', 'tampilan'] },
+    usage: { id: '/views · /views --all · /views LIGHTING', en: '/views · /views --all · /views LIGHTING' },
+  },
   { name: 'warnings', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['peringatan'] } },
   { name: 'queue', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['antrean', 'antrian'] } },
   // `/start` dikirim otomatis oleh tombol START Telegram saat chat pertama
@@ -169,7 +179,7 @@ export function parseCommand(text: string): { spec: CommandSpec | null; raw: str
  * satu tanda hubung tunggal dimaksudkan sebagai flag — lihat `flagName`.
  */
 export const KNOWN_FLAGS = new Set([
-  'series', 'disc', 'discipline', 'groups', 'grup', 'detail', '3d',
+  'series', 'disc', 'discipline', 'groups', 'grup', 'detail', '3d', 'all',
 ]);
 
 /**
