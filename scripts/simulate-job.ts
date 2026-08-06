@@ -44,6 +44,43 @@ let bucketExists = true;
 let bucketsCreated = 0;
 let storageDown = false;
 
+/**
+ * Bagaimana Storage API menjawab saat bucket-nya belum ada.
+ *
+ * Ada dua dialek, dan perbedaannya BUKAN kosmetik — ia yang membuat /pdf gagal
+ * di produksi sementara berkas ini hijau:
+ *
+ *   'notFound' — 404 {"error":"Bucket not found"}. Yang dulu ditiru di sini,
+ *                dan hanya ini yang dikenali versi pertama api/_lib/storage.ts.
+ *
+ *   'fkError'  — 400 {"statusCode":"404","error":"InvalidRequest",
+ *                     "message":"The related resource does not exist"}
+ *                Yang BENAR-BENAR dijawab Supabase yang berjalan sekarang untuk
+ *                permintaan signed upload URL. Pembuatan signed URL menguji izin
+ *                dengan menyisipkan baris ke `storage.objects`; tanpa baris
+ *                bucket-nya, yang gagal adalah FOREIGN KEY — 400, bukan 404.
+ *
+ * Jalur "buat bucket lalu coba lagi" karenanya tidak pernah jalan sekali pun,
+ * dan yang sampai ke chat cuma: HTTP 500 signed upload URL 400.
+ */
+type MissingDialect = 'notFound' | 'fkError';
+let missingDialect: MissingDialect = 'fkError';
+
+/** Batas unggah global proyek. null = tidak ada batas yang menghalangi. */
+let globalUploadLimit: number | null = null;
+let bucketSizeLimit: number | null = null;
+
+function bucketMissingResponse(res: ServerResponse): true {
+  return missingDialect === 'notFound'
+    ? send(res, 404, { statusCode: '404', error: 'Bucket not found', message: 'Bucket not found' })
+    : send(res, 400, {
+        statusCode: '404',
+        error: 'InvalidRequest',
+        message: 'The related resource does not exist',
+        code: 'InvalidRequest',
+      });
+}
+
 function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const parts: Buffer[] = [];
@@ -78,25 +115,42 @@ async function handleSupabase(req: IncomingMessage, res: ServerResponse, url: UR
     const rest = url.pathname.slice('/storage/v1/'.length);
 
     if (rest === 'bucket/job-files') {
-      if (!bucketExists) return send(res, 404, { error: 'Bucket not found' });
+      if (!bucketExists) return bucketMissingResponse(res);
       return send(res, 200, { id: 'job-files', public: false });
     }
 
     // Pembuatan bucket lewat Storage API — yang dipakai server supaya tidak
     // ada langkah SQL manual sama sekali.
     if (req.method === 'POST' && rest === 'bucket') {
-      const body = JSON.parse((await readBody(req)).toString() || '{}') as { id?: string; public?: boolean };
+      const body = JSON.parse((await readBody(req)).toString() || '{}') as {
+        id?: string;
+        public?: boolean;
+        file_size_limit?: number;
+      };
       if (body.id !== 'job-files') return send(res, 400, { error: 'bucket lain' });
       if (bucketExists) return send(res, 409, { error: 'Duplicate', message: 'The resource already exists' });
       if (body.public !== false) return send(res, 400, { error: 'bucket harus privat' });
+
+      // Batas unggah global proyek. `file_size_limit` per-bucket tidak boleh
+      // melebihinya, dan yang ditolak bukan angkanya — melainkan SELURUH
+      // pembuatan bucket-nya.
+      if (globalUploadLimit !== null && (body.file_size_limit ?? 0) > globalUploadLimit) {
+        return send(res, 400, {
+          statusCode: '400',
+          error: 'InvalidRequest',
+          message: `the requested file_size_limit exceeds the project global upload limit (${globalUploadLimit})`,
+        });
+      }
+
       bucketExists = true;
       bucketsCreated++;
+      bucketSizeLimit = body.file_size_limit ?? null;
       return send(res, 200, { name: 'job-files' });
     }
 
     // Minta signed upload URL.
     if (req.method === 'POST' && rest.startsWith('object/upload/sign/job-files/')) {
-      if (!bucketExists) return send(res, 404, { error: 'Bucket not found' });
+      if (!bucketExists) return bucketMissingResponse(res);
       const path = rest.slice('object/upload/sign/job-files/'.length);
       return send(res, 200, { url: `/object/upload/sign/job-files/${path}?token=simulasi` });
     }
@@ -262,6 +316,7 @@ async function main() {
   const report = (await import('../api/machine/report')).default;
   const uploadUrl = (await import('../api/machine/upload-url')).default;
   const health = (await import('../api/health')).default;
+  const { keyHint, keyKind } = await import('../api/_lib/storage');
 
   const auth = { authorization: 'Bearer machine-token-simulasi' };
 
@@ -349,9 +404,20 @@ async function main() {
     check(`body masih aman (${(wire / MB).toFixed(2)} MB)`, wire < VERCEL_BODY_LIMIT);
   }
 
-  console.log('\n3. Bucket belum ada — server harus membuatnya sendiri, bukan menyerah');
-  {
+  // Bucket belum ada, DUA DIALEK.
+  //
+  // Dijalankan dua kali dengan sengaja. Versi pertama berkas ini hanya meniru
+  // dialek 404, dan itulah kenapa seluruh pemeriksaan di sini hijau sementara
+  // /pdf di produksi menjawab:
+  //   HTTP 500 {"error":"internal","detail":"signed upload URL 400: …
+  //             The related resource does not exist"}
+  // Tiruan yang lebih ramah daripada aslinya bukan penjaga, ia hiasan.
+  for (const dialect of ['notFound', 'fkError'] as const) {
+    console.log(
+      `\n3${dialect === 'notFound' ? '' : 'b'}. Bucket belum ada (dialek ${dialect === 'notFound' ? '404 Bucket not found' : '400 The related resource does not exist'}) — server harus membuatnya sendiri`,
+    );
     sent.length = 0;
+    missingDialect = dialect;
     bucketExists = false;
     bucketsCreated = 0;
     objects.clear();
@@ -378,7 +444,7 @@ async function main() {
     check('/api/health jadi ok sesudahnya', (h2.body as { storage: string }).storage === 'ok');
   }
 
-  console.log('\n3b. Storage benar-benar mati — tetap harus jadi kalimat, bukan kesunyian');
+  console.log('\n3c. Storage benar-benar mati — tetap harus jadi kalimat, bukan kesunyian');
   {
     sent.length = 0;
     storageDown = true;
@@ -462,6 +528,65 @@ async function main() {
     const traversal = await invoke(uploadUrl, { body: { id: job.id, name: '../../etc/passwd' }, headers: auth });
     const path = (traversal.body as { path?: string }).path ?? '';
     check('nama berkas tidak bisa kabur dari bucket', !path.includes('..') && !path.includes('/'), path);
+  }
+
+  console.log('\n8. Batas unggah global proyek di bawah 50 MB — bucket tetap harus terbentuk');
+  {
+    sent.length = 0;
+    missingDialect = 'fkError';
+    bucketExists = false;
+    bucketsCreated = 0;
+    bucketSizeLimit = null;
+    objects.clear();
+
+    // Proyek dengan batas global 25 MB menolak `file_size_limit: 50 MB` — dan
+    // yang gagal bukan angkanya, melainkan SELURUH pembuatan bucket-nya. Kalau
+    // server menyerah di situ, hasilnya bukan "bucket dengan batas lebih kecil"
+    // melainkan tidak ada bucket sama sekali, selamanya.
+    globalUploadLimit = 25 * MB;
+
+    const job = startJob('pdf');
+    const pdf = fakePdf(12 * MB);
+    const { out } = await addinDelivers(job.id, 'besar.pdf', pdf, '1 sheet');
+    const doc = sent.find((s) => s.method === 'sendDocument');
+
+    check('bucket tetap terbentuk', bucketExists && bucketsCreated === 1, `${bucketsCreated}x`);
+    check('batasnya diserahkan ke proyek', bucketSizeLimit === null, String(bucketSizeLimit));
+    check('export berhasil', out.status === 200 && !!doc && sha(doc.bytes!) === sha(pdf));
+
+    globalUploadLimit = null;
+  }
+
+  console.log('\n9. Jenis kunci Supabase dikenali — anon key yang salah pasang harus tertangkap');
+  {
+    // Kombinasi paling menyesatkan yang bisa terjadi: anon key ditempel ke
+    // SUPABASE_SERVICE_ROLE_KEY. PostgREST tetap menjawab untuk tabel yang
+    // policy-nya longgar, jadi /api/health melaporkan `database: ok` dan
+    // semuanya terlihat sehat — sementara SELURUH Storage API menolak, dan
+    // gejalanya cuma "berkasnya tidak pernah sampai".
+    const jwt = (role: string) =>
+      `${Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')}.` +
+      `${Buffer.from(JSON.stringify({ role, iss: 'supabase' })).toString('base64url')}.tandatangan`;
+
+    check('service_role JWT dikenali', keyKind(jwt('service_role')) === 'service_role');
+    check('anon JWT dikenali sebagai anon', keyKind(jwt('anon')) === 'anon');
+    check('kunci rahasia format baru dikenali', keyKind('sb_secret_abc123') === 'secret');
+    check('kunci publishable dikenali', keyKind('sb_publishable_abc123') === 'publishable');
+    check('kunci kosong dikenali', keyKind('') === 'empty');
+
+    // Petunjuknya harus menyebut apa yang HARUS DILAKUKAN, bukan sekadar
+    // memberi nama pada masalahnya.
+    const anonHint = keyHint(jwt('anon')) ?? '';
+    check('anon key menghasilkan petunjuk yang bisa dikerjakan',
+      /service_role/.test(anonHint) && /Redeploy/.test(anonHint), anonHint.slice(0, 60));
+    check('service_role key tidak memunculkan petunjuk palsu', keyHint(jwt('service_role')) === null);
+
+    const h = await invoke(health, { method: 'GET' });
+    check(
+      '/api/health menyebut jenis kuncinya',
+      typeof (h.body as { supabaseKeyKind?: string }).supabaseKeyKind === 'string',
+      String((h.body as { supabaseKeyKind?: string }).supabaseKeyKind),
+    );
   }
 
   server.close();

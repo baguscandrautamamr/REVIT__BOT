@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 
 import * as db from '../_lib/db';
 import { ENV, WEBHOOK_SECRET_RULE, missingEnv, webhookSecretValid } from '../_lib/env';
+import { BUCKET, bucketReady, keyHint, keyKind } from '../_lib/storage';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const provided = String(req.query.secret ?? '');
@@ -89,6 +90,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (err) {
     out.queue = { error: short(err) };
   }
+
+  // ── Storage ────────────────────────────────────────────────────────────
+  //
+  // Diperiksa terpisah dari database walaupun keduanya memakai kunci yang
+  // sama: Storage API dan PostgREST tidak gagal bersamaan. Anon key yang salah
+  // pasang tetap bisa membaca tabel yang policy-nya longgar, jadi bagian
+  // `machineState` di atas bisa terlihat sehat sementara SETIAP export di atas
+  // 3 MB menguap tanpa jejak.
+  const storage = await bucketReady();
+  out.storage = {
+    bucket: BUCKET,
+    ready: storage.ok,
+    detail: storage.detail,
+    keyKind: keyKind(),   // hanya jenisnya, tidak pernah nilainya
+  };
+  if (!storage.ok) {
+    problems.push(`Bucket "${BUCKET}" belum siap: ${storage.detail}`);
+  }
+  const badKey = keyHint();
+  if (badKey) problems.push(badKey);
 
   // ── Telegram ───────────────────────────────────────────────────────────
   if (!ENV.botToken) {
