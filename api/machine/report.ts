@@ -19,7 +19,7 @@ import crypto from 'node:crypto';
 import * as db from '../_lib/db';
 import { ENV } from '../_lib/env';
 import { translator } from '../_lib/i18n';
-import { resultBlocks } from '../_lib/reply';
+import { durationText, resultBlocks } from '../_lib/reply';
 import {
   MAX_TEXT,
   chunk,
@@ -39,6 +39,9 @@ const MAX_UPLOAD = 50 * 1024 * 1024;
  */
 const MAX_ERROR_CHARS = 500;
 
+/** Di bawah ini, lama eksekusi tidak disebut — hanya menambah bising. */
+const SLOW_ENOUGH_MS = 10_000;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
   if (!authorized(req)) return res.status(401).json({ error: 'unauthorized' });
@@ -50,6 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     text?: string;
     error?: string;
     file?: { name: string; base64: string };
+    elapsedMs?: number;
   };
 
   if (!body.id) return res.status(400).json({ error: 'id required' });
@@ -78,9 +82,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const locale = job.lang;
     const t = translator(locale);
-    const head = ok
+    let head = ok
       ? t('common.done')
       : t('errors.revitError', { message: (body.error ?? '—').slice(0, MAX_ERROR_CHARS) });
+
+    // Lama eksekusi hanya disebut kalau memang terasa lama. Menempelkan
+    // "Waktu proses: 1 detik" ke setiap /levels cuma menambah bising.
+    const elapsed = body.elapsedMs ?? 0;
+    if (elapsed >= SLOW_ENOUGH_MS) {
+      head += ` · ${t('common.elapsed', { duration: durationText(elapsed, locale) })}`;
+    }
 
     await deliver(job, compose(mdv2(head), ok ? resultBlocks(updated.result) : []));
 

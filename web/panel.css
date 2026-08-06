@@ -212,3 +212,12 @@
   transition: opacity var(--dur) var(--ease-out), transform var(--dur) var(--ease-spring);
 }
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+/* Command yang add-in-nya belum ada. Diredupkan, bukan disembunyikan: orang
+   perlu tahu apa yang direncanakan, tapi tidak boleh mengira tombolnya siap
+   dipakai. Garis putus-putus supaya tetap terbaca saat "reduce transparency"
+   menyamakan semua tingkat opasitas. */
+.chip.is-soon {
+  opacity: .55;
+  border-style: dashed;
+}

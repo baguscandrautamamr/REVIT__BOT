@@ -109,6 +109,15 @@ public sealed class ReportRequest
     public string? Text { get; set; }
     public string? Error { get; set; }
     public FileDto? File { get; set; }
+
+    /// <summary>
+    /// Lama eksekusi di dalam Revit, milidetik.
+    ///
+    /// Dilaporkan supaya "kenapa lama?" bisa dijawab dengan angka. Tanpa ini
+    /// tidak ada cara membedakan export yang memang berat dari job yang
+    /// tersangkut — keduanya sama-sama terlihat sebagai "⏳" yang lama.
+    /// </summary>
+    public long ElapsedMs { get; set; }
 }
 
 public sealed class FileDto

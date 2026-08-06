@@ -44,6 +44,9 @@ export const en = {
       `Level "${p.level}" not found. Send /levels for exact names.`,
     viewNotFound: (p: Params) => `Sheet/view "${p.view}" not found.`,
     revitError: (p: Params) => `Revit rejected it: ${p.message}`,
+    notImplemented: (p: Params) =>
+      `${p.cmd} is not available yet — the Revit add-in has no implementation for it, ` +
+      'so queueing it would achieve nothing. /help marks which commands already work.',
     stuck:
       '⚠️ Cut off mid-run — Revit was closed or the add-in stopped before the result was sent. Run the command again.',
     workerPaused:
@@ -64,6 +67,11 @@ export const en = {
     sectionAdmin: 'Administration',
     roleNote: (p: Params) => `Your role: ${p.role}`,
     hiddenNote: (p: Params) => `${p.n} more commands are admin-only and hidden.`,
+    // Marker appended to commands the add-in cannot run yet. Without it /help
+    // promises 9 commands that are certain to be refused the moment you try.
+    soon: '— not available yet',
+    soonNote: (p: Params) =>
+      `${p.n} commands marked "not available yet" are still waiting on the Revit add-in. Typing them gets a refusal, not a queue slot.`,
   },
 
   status: {

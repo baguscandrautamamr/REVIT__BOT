@@ -16,6 +16,29 @@ export interface CommandSpec {
   inMenu: boolean;
   /** Butuh konfirmasi dua langkah sebelum dieksekusi. */
   confirm?: boolean;
+  /**
+   * Sudah ada implementasinya di add-in Revit.
+   *
+   * Command yang butuh Revit tapi `addin: false` DITOLAK di server, sebelum
+   * masuk antrean. Sebelumnya ia menempuh seluruh perjalanan — Supabase →
+   * polling → main thread Revit → report — hanya untuk dijawab "belum
+   * diimplementasi", dan kalau PC-nya kebetulan mati ia menggantung 10 menit
+   * dulu sebelum kedaluwarsa. Jawabannya sudah diketahui sejak awal.
+   *
+   * Harus sama dengan daftar di `CommandHandler` (addin/Events/CommandHandler.cs).
+   */
+  addin?: boolean;
+}
+
+/** Command yang dijawab server sendiri, tanpa menyentuh Revit. */
+export const SERVER_SIDE = new Set([
+  'help', 'status', 'queue', 'lang', 'theme', 'panelapp',
+  'users', 'pause', 'resume', 'cancel',
+]);
+
+/** Butuh Revit, tapi add-in belum punya implementasinya. */
+export function notImplemented(spec: CommandSpec): boolean {
+  return !SERVER_SIDE.has(spec.name) && spec.addin !== true;
 }
 
 /**
@@ -33,9 +56,9 @@ export interface CommandSpec {
 export const COMMANDS: CommandSpec[] = [
   // ── Info & status ──────────────────────────────────────────────────────
   { name: 'status', role: 'viewer', section: 'info', inMenu: true },
-  { name: 'levels', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['lantai', 'level'] } },
-  { name: 'sheets', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['lembar'] } },
-  { name: 'warnings', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['peringatan'] } },
+  { name: 'levels', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['lantai', 'level'] } },
+  { name: 'sheets', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['lembar'] } },
+  { name: 'warnings', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['peringatan'] } },
   { name: 'queue', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['antrean', 'antrian'] } },
   // `/start` dikirim otomatis oleh tombol START Telegram saat chat pertama
   // kali dibuka. Tanpa alias ini, interaksi pertama siapa pun dijawab
@@ -45,19 +68,19 @@ export const COMMANDS: CommandSpec[] = [
 
   // ── Data model ─────────────────────────────────────────────────────────
   {
-    name: 'count', role: 'viewer', section: 'query', inMenu: true,
+    name: 'count', role: 'viewer', section: 'query', inMenu: true, addin: true,
     aliases: { id: ['hitung'] },
     usage: { id: '/count L1 · /count L1 lighting --detail', en: '/count L1 · /count L1 lighting --detail' },
   },
-  { name: 'tray', role: 'viewer', section: 'query', inMenu: true, usage: { id: '/tray L1', en: '/tray L1' } },
+  { name: 'tray', role: 'viewer', section: 'query', inMenu: true, addin: true, usage: { id: '/tray L1', en: '/tray L1' } },
   { name: 'panel', role: 'viewer', section: 'query', inMenu: true, usage: { id: '/panel LP-01', en: '/panel LP-01' } },
-  { name: 'find', role: 'viewer', section: 'query', inMenu: true, aliases: { id: ['cari'] }, usage: { id: '/find MARK-123', en: '/find MARK-123' } },
+  { name: 'find', role: 'viewer', section: 'query', inMenu: true, addin: true, aliases: { id: ['cari'] }, usage: { id: '/find MARK-123', en: '/find MARK-123' } },
   { name: 'load', role: 'viewer', section: 'query', inMenu: true, aliases: { id: ['beban'] }, usage: { id: '/load L1', en: '/load L1' } },
 
   // ── Export ─────────────────────────────────────────────────────────────
-  { name: 'pdf', role: 'viewer', section: 'export', inMenu: true, usage: { id: '/pdf LP-01 LP-02', en: '/pdf LP-01 LP-02' } },
+  { name: 'pdf', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/pdf LP-01 LP-02', en: '/pdf LP-01 LP-02' } },
   { name: 'png', role: 'viewer', section: 'export', inMenu: true, usage: { id: '/png 3D-ELEC', en: '/png 3D-ELEC' } },
-  { name: 'schedule', role: 'viewer', section: 'export', inMenu: true, usage: { id: '/schedule PANEL-SCH', en: '/schedule PANEL-SCH' } },
+  { name: 'schedule', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/schedule PANEL-SCH', en: '/schedule PANEL-SCH' } },
   { name: 'dwg', role: 'admin', section: 'export', inMenu: false, usage: { id: '/dwg E-101', en: '/dwg E-101' } },
   { name: 'nwc', role: 'admin', section: 'export', inMenu: false },
   { name: 'ifc', role: 'admin', section: 'export', inMenu: false },
@@ -89,11 +112,35 @@ for (const c of COMMANDS) {
 
 /** Terima `/count@MyBot L1` maupun `/hitung L1`. */
 export function parseCommand(text: string): { spec: CommandSpec | null; raw: string; args: string[] } {
-  const [head, ...rest] = text.trim().split(/\s+/);
+  const trimmed = text.trim();
+  const space = trimmed.search(/\s/);
+  const head = space === -1 ? trimmed : trimmed.slice(0, space);
+  const rest = space === -1 ? '' : trimmed.slice(space + 1);
+
   const raw = head.replace(/^\//, '').split('@')[0].toLowerCase();
-  return { spec: BY_NAME.get(raw) ?? null, raw, args: rest };
+  return { spec: BY_NAME.get(raw) ?? null, raw, args: tokenize(rest) };
 }
 
-export function visibleTo(role: Role): CommandSpec[] {
-  return COMMANDS.filter((c) => role === 'admin' || c.role === 'viewer');
+/**
+ * Pecah argumen, dengan `"..."` sebagai satu token.
+ *
+ * Nama di proyek nyata mengandung spasi — level "GROUND FLOOR", schedule
+ * "PANEL SCHEDULE DB-UTILTY", sheet "GROUND & FIRST FLOOR". Memecah begitu saja
+ * pada spasi membuat `/count GROUND FLOOR lighting` terbaca sebagai
+ * level="GROUND", kategori="FLOOR" — dan karena tidak ada kategori bernama
+ * "FLOOR", jawabannya "tidak ada elemen MEP di lantai ini" untuk lantai yang
+ * sebenarnya penuh. Salah yang tidak terlihat salah.
+ *
+ * Tanda kutip di sini adalah jalan keluar eksplisitnya. Untuk command yang
+ * hanya menerima SATU nama, `webhook.ts` menggabungkan kembali seluruh token
+ * jadi tanda kutipnya bahkan tidak diperlukan.
+ */
+export function tokenize(input: string): string[] {
+  const out: string[] = [];
+  // Satu token = teks dalam kutip ganda, dalam kutip tunggal, atau tanpa spasi.
+  for (const m of input.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)) {
+    const value = m[1] ?? m[2] ?? m[3] ?? '';
+    if (value) out.push(value);
+  }
+  return out;
 }

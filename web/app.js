@@ -12,7 +12,12 @@ tg?.expand?.();
 /* ── Daftar command untuk panel ────────────────────────────────────────────
    Sengaja dijadikan konstanta di sisi klien: panel tetap berguna walau API
    sedang mati, dan tidak ada data sensitif di sini. Urutan & nama harus
-   sama dengan `api/_lib/commands.ts`. */
+   sama dengan `api/_lib/commands.ts`.
+
+   `soon: true` = add-in Revit belum punya implementasinya, jadi server akan
+   menolaknya. Tombolnya tetap ada supaya rencananya terlihat, tapi ditandai —
+   menawarkan tombol yang pasti gagal adalah cara tercepat membuat orang
+   mengira seluruh botnya rusak. Dijaga sinkron oleh scripts/check-commands.ts. */
 const COMMANDS = [
   { section: 'info',   name: 'status',   role: 'viewer' },
   { section: 'info',   name: 'levels',   role: 'viewer' },
@@ -25,18 +30,18 @@ const COMMANDS = [
   { section: 'info',   name: 'panelapp', role: 'viewer' },
   { section: 'query',  name: 'count',    role: 'viewer', arg: 'L1' },
   { section: 'query',  name: 'tray',     role: 'viewer', arg: 'L1' },
-  { section: 'query',  name: 'panel',    role: 'viewer', arg: 'LP-01' },
+  { section: 'query',  name: 'panel',    role: 'viewer', arg: 'LP-01', soon: true },
   { section: 'query',  name: 'find',     role: 'viewer', arg: 'MARK-123' },
-  { section: 'query',  name: 'load',     role: 'viewer', arg: 'L1' },
+  { section: 'query',  name: 'load',     role: 'viewer', arg: 'L1', soon: true },
   { section: 'export', name: 'pdf',      role: 'viewer', arg: 'LP-01' },
-  { section: 'export', name: 'png',      role: 'viewer', arg: '3D-ELEC' },
+  { section: 'export', name: 'png',      role: 'viewer', arg: '3D-ELEC', soon: true },
   { section: 'export', name: 'schedule', role: 'viewer', arg: 'PANEL-SCH' },
-  { section: 'export', name: 'dwg',      role: 'admin',  arg: 'E-101' },
-  { section: 'export', name: 'nwc',      role: 'admin' },
-  { section: 'export', name: 'ifc',      role: 'admin' },
-  { section: 'modify', name: 'setparam', role: 'admin' },
-  { section: 'modify', name: 'tag',      role: 'admin' },
-  { section: 'modify', name: 'dynamo',   role: 'admin' },
+  { section: 'export', name: 'dwg',      role: 'admin',  arg: 'E-101', soon: true },
+  { section: 'export', name: 'nwc',      role: 'admin', soon: true },
+  { section: 'export', name: 'ifc',      role: 'admin', soon: true },
+  { section: 'modify', name: 'setparam', role: 'admin', soon: true },
+  { section: 'modify', name: 'tag',      role: 'admin', soon: true },
+  { section: 'modify', name: 'dynamo',   role: 'admin', soon: true },
   { section: 'admin',  name: 'pause',    role: 'admin' },
   { section: 'admin',  name: 'resume',   role: 'admin' },
   { section: 'admin',  name: 'cancel',   role: 'admin' },
@@ -264,11 +269,15 @@ function renderCommands() {
     list.className = 'cmd-list';
     list.append(...items.map((c) => {
       const btn = document.createElement('button');
-      btn.className = 'chip';
+      btn.className = c.soon ? 'chip is-soon' : 'chip';
       btn.type = 'button';
       btn.dataset.role = c.role;
       btn.textContent = c.arg ? `/${c.name} ${c.arg}` : `/${c.name}`;
-      btn.addEventListener('click', () => copyToChat(btn));
+      if (c.soon) btn.title = i18n.t('cmd.soon');
+      // Tetap bisa disalin — kadang orang memang ingin mencatat rencananya —
+      // tapi ketukannya menjelaskan, bukan membiarkan mereka mengirim command
+      // yang sudah pasti ditolak tanpa tahu kenapa.
+      btn.addEventListener('click', () => (c.soon ? toast(i18n.t('cmd.soon')) : copyToChat(btn)));
       return btn;
     }));
 
