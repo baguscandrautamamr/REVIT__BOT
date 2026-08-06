@@ -30,19 +30,31 @@ public sealed class SheetsCommand : IBotCommand
                 : $"Tidak ada sheet yang cocok dengan \"{filter}\".");
 
         var sb = new StringBuilder();
-        var numWidth = sheets.Max(s => s.SheetNumber.Length);
 
+        // Jumlahnya di ATAS. Di bawah, ia baru terbaca setelah menggulir seluruh
+        // daftarnya — padahal itu justru angka yang menentukan apakah daftarnya
+        // perlu digulir sama sekali.
+        sb.AppendLine(string.IsNullOrWhiteSpace(filter)
+            ? $"{sheets.Count} sheet"
+            : $"{sheets.Count} sheet cocok dengan \"{filter}\"");
+        sb.AppendLine();
+
+        // Nomor sheet di barisnya sendiri, NAMANYA di bawahnya.
+        //
+        // Sebelumnya keduanya dijejalkan ke satu baris dengan nama dipotong di
+        // huruf ke-30, dan yang hilang persis bagian yang membedakan satu sheet
+        // dari sheet lain: "GROUND & FIRST FLOOR – LIGHTI…" dan
+        // "GROUND & FIRST FLOOR – EMERGE…" terbaca nyaris sama. Sekarang nama
+        // dapat seluruh lebar baris dan dibungkus kalau perlu — tidak ada lagi
+        // yang dibuang.
         foreach (var sheet in sheets)
         {
             var revision = LatestRevision(doc, sheet);
-            var name = sheet.Name.Length > 30 ? sheet.Name[..29] + "…" : sheet.Name;
-            sb.AppendLine($"{sheet.SheetNumber.PadRight(numWidth)}  {name,-30} {revision}");
+            var head = revision is null ? sheet.SheetNumber : $"{sheet.SheetNumber}  ·  rev {revision}";
+            Layout.Entry(sb, head, sheet.Name);
         }
 
-        sb.AppendLine();
-        sb.Append($"{sheets.Count} sheet");
-
-        return ExecResult.Success(sb.ToString());
+        return ExecResult.Success(sb.ToString().TrimEnd());
     }
 
     /// <summary>
@@ -59,10 +71,11 @@ public sealed class SheetsCommand : IBotCommand
     /// terjadi di lapangan. `GetRevisionNumberOnSheet` sah untuk kedua mode
     /// penomoran dan mengembalikan angka yang persis tercetak di sheet.
     /// </summary>
-    private static string LatestRevision(Document doc, ViewSheet sheet)
+    /// <summary>null = sheet ini memang belum punya revisi.</summary>
+    private static string? LatestRevision(Document doc, ViewSheet sheet)
     {
         var ids = sheet.GetAllRevisionIds();
-        if (ids.Count == 0) return "—";
+        if (ids.Count == 0) return null;
 
         // GetAllRevisionIds mengembalikan urutan sesuai urutan revisi di model;
         // yang terakhir adalah yang terbaru.
@@ -82,7 +95,7 @@ public sealed class SheetsCommand : IBotCommand
         // disembunyikan) tetap punya nomor di tingkat project. SequenceNumber
         // selalu sah, apa pun mode penomorannya — jadi ia jadi jaring terakhir
         // supaya satu sheet aneh tidak menjatuhkan seluruh daftar.
-        if (doc.GetElement(id) is not Revision revision) return "—";
+        if (doc.GetElement(id) is not Revision revision) return null;
         try
         {
             return revision.RevisionNumber;

@@ -55,12 +55,17 @@ public sealed class FindByMarkCommand : IBotCommand
         sb.AppendLine($"{hits.Count} elemen cocok dengan \"{wanted}\"");
         sb.AppendLine();
 
+        // Satu baris kosong antar hasil. Tanpa itu empat baris milik elemen
+        // pertama dan empat baris milik elemen kedua menyatu jadi satu blok
+        // delapan baris, dan batas antar elemen cuma bisa ditemukan dengan
+        // menghitung.
         foreach (var (element, mark) in ordered.Take(MaxHits))
         {
             sb.AppendLine($"{mark}  ·  {CategoryOf(element)}");
             sb.AppendLine($"   Level : {LevelNameOf(doc, element)}");
             sb.AppendLine($"   Posisi: {PositionOf(element)}");
             sb.AppendLine($"   Id    : {element.Id}");
+            sb.AppendLine();
         }
 
         if (ordered.Count > MaxHits)

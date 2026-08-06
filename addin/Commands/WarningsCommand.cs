@@ -35,16 +35,18 @@ public sealed class WarningsCommand : IBotCommand
 
         foreach (var group in groups.Take(MaxGroups))
         {
-            // Deskripsi warning Revit bisa satu kalimat panjang. Dipotong di
-            // sini, bukan di sisi Telegram, supaya jumlahnya tetap terbaca.
-            var text = group.Key.Length > 68 ? group.Key[..67] + "…" : group.Key;
-            sb.AppendLine($"{group.Count(),4}  {text}");
+            // Deskripsi warning Revit adalah kalimat, kadang dua. Dulu dipotong
+            // di huruf ke-68 — dan yang terpotong justru bagian yang menjelaskan
+            // APA yang salah, karena Revit menaruh subjeknya di depan dan
+            // akibatnya di belakang. Sekarang dibungkus: angkanya tetap rata di
+            // kolom kiri, kalimatnya utuh sampai habis.
+            Layout.Hanging(sb, group.Count().ToString(), group.Key, 6);
+            sb.AppendLine();
         }
 
         if (groups.Count > MaxGroups)
         {
             var rest = groups.Skip(MaxGroups).Sum(g => g.Count());
-            sb.AppendLine();
             sb.AppendLine($"…{groups.Count - MaxGroups} jenis lain ({rest} warning) tidak ditampilkan.");
         }
 
