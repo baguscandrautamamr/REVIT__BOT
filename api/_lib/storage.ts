@@ -47,17 +47,63 @@ export function objectPath(jobId: string, fileName: string): string {
 }
 
 /**
+ * Buat bucket-nya kalau belum ada.
+ *
+ * Ada supaya tidak ada langkah manual sama sekali. Versi pertama menyerahkan
+ * ini ke migrasi SQL, dan itu salah dua kali: SQL Editor Supabase berjalan
+ * sebagai role `postgres`, yang BUKAN pemilik `storage.objects` — perintah
+ * `alter table storage.objects …` di sana dijawab
+ *   ERROR: 42501: must be owner of table objects
+ * dan karena SQL Editor menjalankan seluruh skrip dalam satu transaksi,
+ * pembuatan bucket-nya ikut di-rollback. Hasilnya: orang mengira sudah
+ * menjalankan migrasinya, padahal tidak ada yang terbentuk.
+ *
+ * Service role key yang dipegang server ini punya izin penuh atas Storage API,
+ * jadi ia bisa mengurusnya sendiri — dan itu satu langkah pemasangan yang tidak
+ * bisa lagi salah dikerjakan.
+ */
+export async function ensureBucket(): Promise<void> {
+  const res = await fetch(`${base()}/bucket`, {
+    method: 'POST',
+    headers: { ...headers(), 'content-type': 'application/json' },
+    body: JSON.stringify({
+      id: BUCKET,
+      name: BUCKET,
+      // PRIVAT. Anon key boleh dipegang siapa saja yang membuka panel; ia tidak
+      // boleh bisa mengunduh gambar kerja hanya karena menebak nama berkasnya.
+      public: false,
+      file_size_limit: MAX_FILE_BYTES,
+    }),
+  });
+
+  if (res.ok) {
+    console.log(`[storage] bucket "${BUCKET}" dibuat`);
+    return;
+  }
+
+  // Sudah ada = tujuan tercapai. Dua proses yang berlomba membuatnya bukan
+  // kesalahan, dan Supabase menjawabnya 409 atau 400 tergantung versi.
+  const body = await res.text();
+  if (res.status === 409 || /exists|duplicate/i.test(body)) return;
+
+  throw new Error(`buat bucket ${BUCKET} gagal: HTTP ${res.status} ${body.slice(0, 300)}`);
+}
+
+/**
  * URL unggah bertanda tangan, berlaku singkat.
  *
  * Add-in memakainya tanpa kredensial apa pun — token-nya ada di query string.
  * Itu disengaja: service role key TIDAK BOLEH pernah sampai ke PC Revit.
  */
 export async function createUploadUrl(path: string): Promise<{ url: string; token: string }> {
-  const res = await fetch(`${base()}/object/upload/sign/${BUCKET}/${path}`, {
-    method: 'POST',
-    headers: { ...headers(), 'content-type': 'application/json' },
-    body: JSON.stringify({}),
-  });
+  let res = await sign(path);
+
+  // Bucket belum ada → buat, lalu coba sekali lagi. Export pertama yang cukup
+  // besar akan memasangnya sendiri; tidak ada yang perlu diingat lebih dulu.
+  if (res.status === 404) {
+    await ensureBucket();
+    res = await sign(path);
+  }
 
   const raw = await res.text();
   if (!res.ok) {
@@ -70,6 +116,14 @@ export async function createUploadUrl(path: string): Promise<{ url: string; toke
 
   const token = new URLSearchParams(parsed.url.split('?')[1] ?? '').get('token') ?? '';
   return { url: `${base()}${parsed.url}`, token };
+}
+
+function sign(path: string): Promise<Response> {
+  return fetch(`${base()}/object/upload/sign/${BUCKET}/${path}`, {
+    method: 'POST',
+    headers: { ...headers(), 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
 }
 
 export async function download(path: string): Promise<Buffer> {
@@ -102,8 +156,9 @@ export async function bucketReady(): Promise<{ ok: boolean; detail: string | nul
       ok: false,
       detail:
         res.status === 404
-          ? `Bucket "${BUCKET}" belum ada — jalankan supabase/migrations/003_storage.sql. ` +
-            'Tanpa itu hasil export di atas 3 MB tidak akan pernah sampai ke Telegram.'
+          ? `Bucket "${BUCKET}" belum ada. Buka /api/admin/setup?secret=… sekali untuk ` +
+            'membuatnya — atau biarkan saja: export besar pertama akan membuatnya sendiri ' +
+            'sebelum mengunggah. Selama belum ada, hasil export di atas 3 MB tidak akan sampai.'
           : `HTTP ${res.status}`,
     };
   } catch (err) {

@@ -22,6 +22,14 @@ export interface SetupOptions {
   webhookSecret?: string;
   /** Kalau diisi, tombol menu Mini App ikut dipasang. */
   panelUrl?: string;
+  /**
+   * Kalau diisi, bucket berkas export ikut disiapkan.
+   *
+   * Disuntikkan sebagai fungsi, bukan dipanggil langsung: `scripts/set-commands.ts`
+   * berjalan dari terminal dengan env yang belum tentu memuat kredensial
+   * Supabase, dan pemasangan menu Telegram tidak boleh gagal hanya karena itu.
+   */
+  ensureStorage?: () => Promise<void>;
 }
 
 export interface SetupReport {
@@ -160,7 +168,25 @@ export async function applyBotSetup(opts: SetupOptions): Promise<SetupReport> {
   await call('setMyShortDescription', { short_description: DESCRIPTIONS.en.short });
   report.steps.push('deskripsi profil → id + en + default');
 
-  // 5. Tombol menu Mini App.
+  // 5. Bucket berkas hasil export.
+  //
+  // Ditaruh di sini supaya "buka sekali, semuanya terpasang" benar-benar
+  // berarti semuanya. Tanpa bucket ini setiap export di atas 3 MB selesai di
+  // Revit lalu berkasnya menguap, sementara SELURUH bagian lain bot terlihat
+  // sehat sempurna — kegagalan yang paling sulit ditebak dari gejalanya.
+  if (opts.ensureStorage) {
+    try {
+      await opts.ensureStorage();
+      report.steps.push('bucket berkas export → siap');
+    } catch (err) {
+      report.warnings.push(
+        `Bucket berkas export gagal dibuat: ${err instanceof Error ? err.message : String(err)}. ` +
+          'Export di atas 3 MB tidak akan sampai sampai ini beres — cek /api/health bagian "storage".',
+      );
+    }
+  }
+
+  // 6. Tombol menu Mini App.
   if (opts.panelUrl) {
     await call('setChatMenuButton', {
       menu_button: { type: 'web_app', text: 'Panel', web_app: { url: opts.panelUrl } },
