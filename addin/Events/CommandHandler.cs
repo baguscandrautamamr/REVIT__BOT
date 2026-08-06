@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitTelegramBridge.Commands;
@@ -53,9 +54,17 @@ public sealed class CommandHandler : IExternalEventHandler
             var doc = app.ActiveUIDocument?.Document;
             LastKnownDocTitle = doc?.Title;
 
+            // Antrean kosong adalah kejadian yang normal dan sering: worker
+            // memanggil Raise() tiap siklus HANYA untuk menyegarkan dua nilai
+            // di atas. Jangan pasang penampung dialog untuk itu — di luar job,
+            // Revit tetap milik orang yang duduk di depannya.
+            if (_pending.IsEmpty) return;
+
+            using var dialogs = new DialogSuppressor(app);
+
             while (_pending.TryDequeue(out var job))
             {
-                RunOne(job, doc);
+                RunOne(job, doc, dialogs);
             }
         }
         catch (Exception ex)
@@ -68,9 +77,11 @@ public sealed class CommandHandler : IExternalEventHandler
         }
     }
 
-    private void RunOne(JobDto job, Document? doc)
+    private void RunOne(JobDto job, Document? doc, DialogSuppressor dialogs)
     {
         var report = new ReportRequest { Id = job.Id, DocTitle = doc?.Title };
+        var started = Stopwatch.StartNew();
+        var dialogsBefore = dialogs.Dismissed.Count;
 
         try
         {
@@ -105,6 +116,20 @@ public sealed class CommandHandler : IExternalEventHandler
             Log.Error($"job {job.Id} ({job.Command})", ex);
             report.Ok = false;
             report.Error = $"{ex.GetType().Name}: {ex.Message}";
+        }
+
+        started.Stop();
+        report.ElapsedMs = (long)started.Elapsed.TotalMilliseconds;
+        Log.Info($"job {job.Id} ({job.Command}) selesai dalam {started.Elapsed.TotalSeconds:N1}s, ok={report.Ok}");
+
+        // Dialog yang muncul di tengah jalan ikut dilaporkan. Kalau hasilnya
+        // nanti terlihat aneh, inilah penjelasannya — dan tanpa baris ini
+        // penampung dialog justru menyembunyikan informasi yang kamu butuhkan.
+        var dialogsHere = dialogs.Dismissed.Skip(dialogsBefore).ToList();
+        if (dialogsHere.Count > 0)
+        {
+            report.Text = (report.Text ?? "").TrimEnd() +
+                          $"\n\nDialog Revit yang ditutup otomatis: {string.Join(", ", dialogsHere)}";
         }
 
         // Report dikirim fire-and-forget: menunggu HTTP di main thread akan
