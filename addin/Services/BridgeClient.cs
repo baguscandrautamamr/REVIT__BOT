@@ -78,6 +78,12 @@ public sealed class HeartbeatInfo
     public string? ActiveDoc { get; set; }
     public string? RevitVersion { get; set; }
     public string? AddinVersion { get; set; }
+
+    /// <summary>
+    /// Main thread masih mengerjakan job sebelumnya. Server tetap mencatat
+    /// heartbeat-nya, tapi tidak memberi job baru.
+    /// </summary>
+    public bool Busy { get; set; }
 }
 
 public sealed class ClaimResponse

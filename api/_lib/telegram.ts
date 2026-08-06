@@ -17,7 +17,34 @@ export function mdv2(s: string): string {
 
 /** Blok kode aman: hanya ` dan \ yang perlu di-escape di dalamnya. */
 export function code(s: string): string {
-  return '```\n' + s.replace(/[`\\]/g, (c) => '\\' + c) + '\n```';
+  return '```\n' + escapeInCode(s) + '\n```';
+}
+
+function escapeInCode(s: string): string {
+  return s.replace(/[`\\]/g, (c) => '\\' + c);
+}
+
+/** Panjang pagar blok kode: "```\n" di depan + "\n```" di belakang. */
+const FENCE_OVERHEAD = 8;
+
+/**
+ * Teks bebas → SATU ATAU LEBIH blok kode, masing-masing di bawah batas
+ * Telegram.
+ *
+ * `code()` tidak cukup untuk hasil yang datang dari Revit: `/sheets` pada
+ * proyek dengan ratusan sheet, atau `/count --detail` pada lantai yang padat,
+ * dengan mudah melewati 4096 karakter — dan Telegram menolak SELURUH pesan
+ * dengan 400, bukan memotongnya. Akibatnya kerja Revit yang sudah selesai
+ * terbuang dan pesan "⏳" milik user tidak pernah berubah.
+ *
+ * Escaping dilakukan SEBELUM pemotongan, bukan sesudah: `chunk()` sudah menjaga
+ * agar tidak ada potongan yang berakhir dengan backslash menggantung, dan itu
+ * satu-satunya urutan yang membuat penjagaan itu ada gunanya di sini.
+ */
+export function codeBlocks(s: string, limit = MAX_TEXT): string[] {
+  const escaped = escapeInCode(s);
+  if (!escaped) return [];
+  return chunk(escaped, limit - FENCE_OVERHEAD).map((part) => '```\n' + part + '\n```');
 }
 
 /** Batas keras Telegram: 4096 karakter per pesan teks. */

@@ -51,6 +51,10 @@
           <span class="dot dot--warn" id="status-dot"></span>
           <h2 id="status-title">…</h2>
         </div>
+        <!-- Diisi app.js hanya saat ada yang salah: sebab kegagalan, bukan
+             cuma "gagal". Tanpa ini panel yang dibuka di luar Telegram terlihat
+             persis sama dengan server yang mati. -->
+        <p class="muted small" id="status-hint" hidden></p>
         <dl class="kv">
           <div><dt data-i18n="status.model"></dt><dd id="kv-model">—</dd></div>
           <div><dt data-i18n="status.lastSeen"></dt><dd id="kv-seen">—</dd></div>

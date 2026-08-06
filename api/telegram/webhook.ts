@@ -250,10 +250,25 @@ async function enqueue(
     }
   }
 
+  // Model yang aktif SAAT command dibuat ikut dibekukan ke dalam payload.
+  // `machine/claim.ts` meneruskannya sebagai `expectedDocTitle`, dan add-in
+  // menolak menjalankan job kalau model di Revit sudah berganti — tanpa ini
+  // kamu bisa menerima PDF sheet LP-01 dari project yang berbeda, dan tidak ada
+  // yang menandainya.
+  //
+  // Nilainya berasal dari heartbeat, yang disegarkan add-in tiap siklus polling
+  // walau tidak ada job (lihat QueueWorker: ExternalEvent di-Raise setiap
+  // siklus, justru supaya judul ini tidak basi). Kalau belum diketahui —
+  // Revit baru dibuka dan heartbeat pertama belum masuk — kuncinya tidak
+  // ditulis sama sekali, dan add-in melewati penjagaan ini.
+  const payload = machine.active_doc
+    ? { ...built.payload, docTitle: machine.active_doc }
+    : built.payload;
+
   const job = await db.insertCommand({
     chat_id: chatId,
     command: spec.name,
-    payload: built.payload,
+    payload,
     lang: locale,
   });
 

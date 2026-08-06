@@ -3,7 +3,7 @@
  * Semua keluaran di sini sudah aman untuk `parse_mode: 'MarkdownV2'`.
  */
 import { COMMANDS, type Section } from './commands';
-import { code, mdv2 } from './telegram';
+import { code, codeBlocks, mdv2 } from './telegram';
 import { translator, type Locale } from './i18n';
 import { isOnline } from './limits';
 import type { BotUser, CommandRow, MachineState, Role } from './db';
@@ -113,13 +113,19 @@ export function usersText(locale: Locale, users: BotUser[]): string {
   return `*${mdv2(t('admin.usersTitle'))}*\n` + code(rows.join('\n'));
 }
 
-/** Hasil dari add-in: teks bebas → selalu masuk blok kode supaya aman. */
-export function resultText(result: Record<string, unknown> | null): string {
+/**
+ * Hasil dari add-in: teks bebas → satu atau lebih blok kode.
+ *
+ * Tabel angka lebih terbaca monospace, dan blok kode menghindari seluruh
+ * masalah escaping MarkdownV2 untuk teks yang datang dari Revit.
+ *
+ * Mengembalikan ARRAY, bukan satu string: hasil Revit tidak punya batas atas
+ * yang bisa dipercaya, dan satu pesan yang melewati 4096 karakter ditolak
+ * Telegram seutuhnya. Pemanggil wajib mengirim semua bagiannya.
+ */
+export function resultBlocks(result: Record<string, unknown> | null): string[] {
   const text = typeof result?.text === 'string' ? result.text : '';
-  if (!text) return '';
-  // Tabel angka lebih terbaca monospace, dan blok kode menghindari seluruh
-  // masalah escaping MarkdownV2 untuk teks yang datang dari Revit.
-  return code(text);
+  return codeBlocks(text);
 }
 
 /** "3 menit lalu". `null` → em dash, supaya pemanggil tidak perlu menjaga itu. */

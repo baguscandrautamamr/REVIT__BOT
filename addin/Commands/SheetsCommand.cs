@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Autodesk.Revit.DB;
+using RevitTelegramBridge.Services;
 
 namespace RevitTelegramBridge.Commands;
 
@@ -44,6 +45,20 @@ public sealed class SheetsCommand : IBotCommand
         return ExecResult.Success(sb.ToString());
     }
 
+    /// <summary>
+    /// Nomor revisi terakhir pada satu sheet.
+    ///
+    /// Nomornya dibaca lewat SHEET-nya, bukan lewat objek Revision. Kalau
+    /// "revision numbering" model di-set per sheet, `Revision.RevisionNumber`
+    /// melempar InvalidOperationException:
+    ///
+    ///   This operation is not valid for when the revision numbering is per sheet.
+    ///
+    /// Karena dipanggil di dalam loop, satu model seperti itu membuat SELURUH
+    /// /sheets gagal — bukan cuma kolom revisinya yang kosong. Itu benar-benar
+    /// terjadi di lapangan. `GetRevisionNumberOnSheet` sah untuk kedua mode
+    /// penomoran dan mengembalikan angka yang persis tercetak di sheet.
+    /// </summary>
     private static string LatestRevision(Document doc, ViewSheet sheet)
     {
         var ids = sheet.GetAllRevisionIds();
@@ -51,7 +66,30 @@ public sealed class SheetsCommand : IBotCommand
 
         // GetAllRevisionIds mengembalikan urutan sesuai urutan revisi di model;
         // yang terakhir adalah yang terbaru.
-        var last = doc.GetElement(ids[^1]) as Revision;
-        return last?.RevisionNumber ?? "—";
+        var id = ids[^1];
+
+        try
+        {
+            var onSheet = sheet.GetRevisionNumberOnSheet(id);
+            if (!string.IsNullOrWhiteSpace(onSheet)) return onSheet;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"nomor revisi sheet {sheet.SheetNumber}: {ex.GetType().Name}: {ex.Message}");
+        }
+
+        // Cadangan: revisi yang tidak tampil di sheet (mis. sudah di-issue dan
+        // disembunyikan) tetap punya nomor di tingkat project. SequenceNumber
+        // selalu sah, apa pun mode penomorannya — jadi ia jadi jaring terakhir
+        // supaya satu sheet aneh tidak menjatuhkan seluruh daftar.
+        if (doc.GetElement(id) is not Revision revision) return "—";
+        try
+        {
+            return revision.RevisionNumber;
+        }
+        catch (InvalidOperationException)
+        {
+            return $"#{revision.SequenceNumber}";
+        }
     }
 }

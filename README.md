@@ -136,7 +136,7 @@ tampilan.
 | Dua bahasa + dua tema | Lengkap, `check-i18n` hijau |
 | Panel web / Mini App | Lengkap, dirender & diuji di Chromium |
 | Add-in Revit | Ditulis lengkap, **belum dikompilasi terhadap `RevitAPI.dll` asli** |
-| Command di add-in | 8 dari 21 jalan — lihat tabel di bawah |
+| Command di add-in | 8 dari 17 jalan — lihat tabel di bawah |
 
 ### Command yang sudah ada di add-in
 
