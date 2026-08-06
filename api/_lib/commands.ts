@@ -135,6 +135,74 @@ export function parseCommand(text: string): { spec: CommandSpec | null; raw: str
 }
 
 /**
+ * Nama flag yang dikenal seluruh command. Dipakai HANYA untuk memutuskan apakah
+ * satu tanda hubung tunggal dimaksudkan sebagai flag — lihat `flagName`.
+ */
+export const KNOWN_FLAGS = new Set([
+  'series', 'disc', 'discipline', 'groups', 'grup', 'detail',
+]);
+
+/**
+ * Karakter yang orang MAKSUDKAN sebagai `--` saat mengetik di ponsel.
+ *
+ * Papan ketik iOS dan Android mengganti dua tanda hubung berurutan dengan em
+ * dash, otomatis dan tanpa memberi tahu. Yang sampai ke bot bukan `--disc`
+ * melainkan `—disc` — SATU karakter — dan `startsWith('--')` menolaknya. Katanya
+ * lalu jatuh ke daftar nama sheet, dan yang dibalas bot adalah
+ * "Sheet tidak ditemukan: —disc": pesan yang benar untuk pertanyaan yang salah,
+ * sebab yang salah bukan nama sheet-nya melainkan tanda hubungnya.
+ *
+ * Ini bukan kerewelan. Bot ini dipakai DARI PONSEL — itu seluruh alasannya ada.
+ * Flag yang hanya bisa diketik dari papan ketik fisik sama saja dengan flag yang
+ * tidak pernah dibuat.
+ */
+const DASHES = '—–―‒−'; // em, en, horizontal bar, figure dash, minus
+const LEADING_DASHES = new RegExp(`^[-${DASHES}]+`);
+
+/**
+ * Token → nama flag, atau null kalau ia argumen biasa.
+ *
+ * Tanda hubung ASCII TUNGGAL sengaja diperlakukan berbeda: ia ada di hampir
+ * setiap nomor sheet di proyek ini (`ME-F-EP-1101`), jadi menerimanya tanpa
+ * syarat akan mengubah nomor sheet jadi flag. Ia hanya diterima kalau sisanya
+ * memang nama flag yang dikenal — dan tidak ada papan ketik yang mengubah `--`
+ * menjadi satu tanda hubung ASCII, jadi jalur itu murni salah ketik manusia.
+ */
+function flagName(token: string): string | null {
+  const lead = token.match(LEADING_DASHES)?.[0] ?? '';
+  if (!lead) return null;
+
+  const rest = token.slice(lead.length).toLowerCase();
+  if (!rest) return null;
+
+  // Dua tanda hubung, atau satu dash Unicode apa pun (hasil autocorrect).
+  if (lead.length >= 2 || DASHES.includes(lead)) return rest;
+
+  // Satu tanda hubung ASCII: hanya kalau memang nama flag.
+  return KNOWN_FLAGS.has(rest) ? rest : null;
+}
+
+/**
+ * Pisahkan argumen jadi yang positional dan yang flag.
+ *
+ * Dipakai bersama supaya `--series` di /pdf dan `--detail` di /count tidak bisa
+ * menyimpang aturannya — dan supaya perbaikan em dash di atas berlaku untuk
+ * SEMUA flag sekaligus, bukan cuma yang kebetulan diingat.
+ */
+export function splitArgs(args: string[]): { positional: string[]; flags: string[] } {
+  const positional: string[] = [];
+  const flags: string[] = [];
+
+  for (const arg of args) {
+    const name = flagName(arg);
+    if (name === null) positional.push(arg);
+    else flags.push(name);
+  }
+
+  return { positional, flags };
+}
+
+/**
  * Pecah argumen, dengan `"..."` sebagai satu token.
  *
  * Nama di proyek nyata mengandung spasi — level "GROUND FLOOR", schedule

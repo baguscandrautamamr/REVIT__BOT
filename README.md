@@ -119,6 +119,14 @@ yang terisi — `SERIES ORDER` untuk LV, `SERIES ORDER EE` untuk ELV — dan akh
 `-LV` / `-ELV` hanya ditempel pada series yang memang bercabang. Tanpa pembedaan
 itu, `--series GENERAL` menggabungkan cover LV dan cover ELV ke satu berkas.
 
+**Em dash diterima sebagai `--`.** Papan ketik iOS dan Android mengganti dua
+tanda hubung berurutan dengan em dash secara otomatis, jadi yang sampai ke bot
+adalah `—disc`, satu karakter. Versi pertama fitur ini menolaknya dan menjawab
+"Sheet tidak ditemukan: —disc" — pesan yang benar untuk pertanyaan yang salah.
+`—`, `–`, dan satu tanda hubung untuk nama flag yang dikenal semuanya diterima
+sekarang; nomor sheet berawalan hubung tetap dibaca sebagai nomor sheet. Lihat
+`splitArgs` di `api/_lib/commands.ts`.
+
 Batas `maxSheets` per role ditegakkan di ADD-IN untuk jalur ini, bukan di server:
 pemeriksaan di server menghitung panjang daftar sheet yang diketik, dan
 permintaan per-grup cuma satu kata. Lihat `api/telegram/webhook.ts` di sekitar
