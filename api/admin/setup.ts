@@ -16,6 +16,7 @@ import crypto from 'node:crypto';
 import { applyBotSetup } from '../_lib/botsetup';
 import * as db from '../_lib/db';
 import { ENV, WEBHOOK_SECRET_RULE, missingEnv, webhookSecretValid } from '../_lib/env';
+import { ensureBucket } from '../_lib/storage';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const provided = String(req.query.secret ?? '');
@@ -57,6 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       adminChatIds,
       webhookSecret: ENV.webhookSecret,
       panelUrl: ENV.panelUrl || undefined,
+      ensureStorage: missing.includes('SUPABASE_SERVICE_ROLE_KEY') ? undefined : ensureBucket,
     });
 
     res.setHeader('cache-control', 'no-store');

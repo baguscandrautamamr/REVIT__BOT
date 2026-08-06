@@ -21,10 +21,14 @@
  *   1. PDF 20 MB sampai UTUH ke Telegram lewat Supabase Storage
  *   2. Berkas kecil tetap lewat jalur inline base64, tanpa storage
  *   3. Body yang dikirim ke /api/machine/report SELALU jauh di bawah 4,5 MB
- *   4. Bucket yang belum dibuat menghasilkan pesan yang menyebut sebabnya
- *   5. Berkas di atas 50 MB ditolak dengan kalimat, bukan didiamkan
- *   6. Laporan ganda tidak mengirim berkas dua kali
- *   7. Objek persinggahan selalu dihapus sesudahnya
+ *   4. Bucket yang belum ada DIBUAT SENDIRI oleh server — tidak ada langkah
+ *      SQL manual yang bisa gagal dikerjakan
+ *   5. Storage yang benar-benar mati tetap berakhir sebagai kalimat di chat
+ *   6. Berkas di atas 50 MB ditolak dengan kalimat, bukan didiamkan
+ *   7. Laporan ganda tidak mengirim berkas dua kali
+ *   8. Objek persinggahan selalu dihapus sesudahnya
+ *   9. upload-url menolak token/job palsu, dan nama berkas tidak bisa kabur
+ *      dari bucket lewat "../"
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -37,6 +41,8 @@ interface Row { [k: string]: unknown }
 const tables: Record<string, Row[]> = { commands: [], machine_state: [], bot_users: [] };
 const objects = new Map<string, Buffer>();
 let bucketExists = true;
+let bucketsCreated = 0;
+let storageDown = false;
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -68,11 +74,24 @@ function matches(row: Row, params: URLSearchParams): boolean {
 async function handleSupabase(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
   /* ── Storage ── */
   if (url.pathname.startsWith('/storage/v1/')) {
+    if (storageDown) return send(res, 503, { error: 'Storage sedang tidak bisa dihubungi' });
     const rest = url.pathname.slice('/storage/v1/'.length);
 
     if (rest === 'bucket/job-files') {
       if (!bucketExists) return send(res, 404, { error: 'Bucket not found' });
       return send(res, 200, { id: 'job-files', public: false });
+    }
+
+    // Pembuatan bucket lewat Storage API — yang dipakai server supaya tidak
+    // ada langkah SQL manual sama sekali.
+    if (req.method === 'POST' && rest === 'bucket') {
+      const body = JSON.parse((await readBody(req)).toString() || '{}') as { id?: string; public?: boolean };
+      if (body.id !== 'job-files') return send(res, 400, { error: 'bucket lain' });
+      if (bucketExists) return send(res, 409, { error: 'Duplicate', message: 'The resource already exists' });
+      if (body.public !== false) return send(res, 400, { error: 'bucket harus privat' });
+      bucketExists = true;
+      bucketsCreated++;
+      return send(res, 200, { name: 'job-files' });
     }
 
     // Minta signed upload URL.
@@ -330,10 +349,39 @@ async function main() {
     check(`body masih aman (${(wire / MB).toFixed(2)} MB)`, wire < VERCEL_BODY_LIMIT);
   }
 
-  console.log('\n3. Bucket belum dibuat — harus jadi kalimat, bukan kesunyian');
+  console.log('\n3. Bucket belum ada — server harus membuatnya sendiri, bukan menyerah');
   {
     sent.length = 0;
     bucketExists = false;
+    bucketsCreated = 0;
+    objects.clear();
+
+    // Persis keadaan yang dialami di lapangan: migrasi SQL-nya gagal
+    //   ERROR: 42501: must be owner of table objects
+    // jadi tidak ada bucket sama sekali, dan orangnya tidak bisa berbuat apa-apa.
+    const h1 = await invoke(health, { method: 'GET' });
+    const hb1 = h1.body as { ready: boolean; storage: string; storageDetail: string | null };
+    check('/api/health menandai bucket-nya belum ada', hb1.storage === 'missing' && hb1.ready === false);
+    check('…dan menyebut jalan keluarnya', !!hb1.storageDetail?.includes('/api/admin/setup'));
+
+    const pdf = fakePdf(12 * MB);
+    const job = startJob('pdf');
+    const { out } = await addinDelivers(job.id, 'besar.pdf', pdf, '1 sheet');
+
+    const doc = sent.find((s) => s.method === 'sendDocument');
+    check('bucket dibuat otomatis', bucketsCreated === 1, `${bucketsCreated}x`);
+    check('export TETAP berhasil tanpa SQL manual', out.status === 200 && !!doc);
+    check('isinya utuh', !!doc?.bytes && sha(doc.bytes) === sha(pdf));
+    check('tidak ada pesan kegagalan ke user', !sent.some((s) => s.text?.includes('gagal dikirim')));
+
+    const h2 = await invoke(health, { method: 'GET' });
+    check('/api/health jadi ok sesudahnya', (h2.body as { storage: string }).storage === 'ok');
+  }
+
+  console.log('\n3b. Storage benar-benar mati — tetap harus jadi kalimat, bukan kesunyian');
+  {
+    sent.length = 0;
+    storageDown = true;
     const job = startJob('pdf');
     let raised: string | null = null;
     try {
@@ -347,20 +395,15 @@ async function main() {
       body: { id: job.id, ok: true, text: 'x', fileError: raised ?? 'gagal' },
       headers: auth,
     });
-    check('add-in memang gagal mengunggah', raised !== null, raised?.slice(0, 60) ?? '');
+    check('add-in memang gagal mengunggah', raised !== null, raised?.slice(0, 50) ?? '');
     check('job tetap ditutup, bukan menggantung', jobStatus(job.id) === 'done');
     check('report tetap 200', out.status === 200);
     check(
       'user diberi tahu sebabnya',
       sent.some((s) => s.text?.includes('gagal dikirim')),
-      sent.find((s) => s.text?.includes('gagal dikirim'))?.text?.slice(0, 70).replace(/\\/g, '') ?? 'TIDAK ADA',
+      sent.find((s) => s.text?.includes('gagal dikirim'))?.text?.slice(0, 60).replace(/\\/g, '') ?? 'TIDAK ADA',
     );
-
-    const h = await invoke(health, { method: 'GET' });
-    const hb = h.body as { ready: boolean; storage: string; storageDetail: string | null };
-    check('/api/health menandai storage-nya', hb.storage === 'missing' && hb.ready === false);
-    check('…dan menyebut migrasinya', !!hb.storageDetail?.includes('003_storage.sql'));
-    bucketExists = true;
+    storageDown = false;
   }
 
   console.log('\n4. Berkas di atas batas Telegram 50 MB');
