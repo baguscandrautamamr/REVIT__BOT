@@ -159,6 +159,7 @@ export const id = {
     status: 'Status PC, model terbuka, antrean',
     levels: 'Daftar level di model',
     sheets: 'Daftar sheet + revisi terakhir',
+    series: 'Daftar grup sheet + perintah export siap salin',
     warnings: 'Warning aktif di model',
     queue: 'Antrean command saat ini',
     help: 'Daftar command sesuai role kamu',
