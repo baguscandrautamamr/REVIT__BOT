@@ -77,12 +77,36 @@ Vercel → **Settings → Environment Variables**, semuanya untuk
 > `/api/health` melaporkan `"webhookSecretFormat": "invalid"`, inilah
 > penyebabnya. Yang aman: **`openssl rand -hex 32`**.
 
-Tidak punya terminal untuk membuat string acak? Buka konsol browser (F12) dan
-jalankan — hasilnya heksadesimal, jadi selalu aman:
+### Membuat string acak yang aman
+
+Pilih sesuai yang kamu punya. Ketiganya menghasilkan heksadesimal, jadi selalu
+diterima Telegram.
+
+**PowerShell** (tidak ada `openssl` bawaan di Windows):
+
+```powershell
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+($bytes | ForEach-Object { $_.ToString('x2') }) -join ''
+```
+
+Sudah di-clone repo-nya? Cukup `.\scripts\deploy-bot.ps1 -NewSecret`.
+
+**macOS / Linux / Git Bash:**
+
+```bash
+openssl rand -hex 32
+```
+
+**Browser saja** — konsol (F12) di halaman mana pun:
 
 ```js
 crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '')
 ```
+
+> Jangan pakai `Get-Random` di PowerShell atau `Math.random()` di browser.
+> Keduanya bukan generator kriptografis — cukup untuk melempar dadu, tidak
+> untuk secret.
 
 Simpan `MACHINE_TOKEN` — nanti dipakai lagi di PC Revit.
 
