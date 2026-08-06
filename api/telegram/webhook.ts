@@ -43,8 +43,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await route(req.body ?? {});
   } catch (err) {
-    // Ditelan dengan sengaja — lihat aturan 2 di atas.
+    // Status tetap 200 (aturan 2), tapi jangan diam ke user: bot yang diam
+    // total tidak bisa dibedakan dari webhook yang tidak terpasang, dan
+    // orang akan menghabiskan waktu mencari di tempat yang salah.
     console.error('[webhook]', err);
+    await notifyFailure(req.body, err);
   }
   return res.status(200).json({ ok: true });
 }
@@ -351,6 +354,25 @@ const store = {
   setLang: (chatId: number, lang: db.LangPref) => db.updateUser(chatId, { lang }),
   setTheme: (chatId: number, theme: db.ThemePref) => db.updateUser(chatId, { theme }),
 };
+
+/**
+ * Usaha terakhir memberi tahu user saat handler gagal total.
+ * Sengaja memakai teks polos tanpa MarkdownV2: kalau penyebab gagalnya justru
+ * escaping, pesan errornya sendiri tidak boleh ikut gagal terkirim.
+ */
+async function notifyFailure(body: any, err: unknown): Promise<void> {
+  const chatId = body?.message?.chat?.id ?? body?.callback_query?.from?.id;
+  if (typeof chatId !== 'number') return;
+
+  const detail = err instanceof Error ? err.message.slice(0, 300) : 'unknown';
+  try {
+    await sendMessage(chatId, `⚠️ Terjadi kesalahan di server.\n\n${detail}`, {
+      parse_mode: undefined,
+    });
+  } catch (sendErr) {
+    console.error('[webhook] gagal mengabari user', sendErr);
+  }
+}
 
 function headerOf(req: VercelRequest, name: string): string | null {
   const v = req.headers[name];

@@ -37,7 +37,11 @@ export const COMMANDS: CommandSpec[] = [
   { name: 'sheets', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['lembar'] } },
   { name: 'warnings', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['peringatan'] } },
   { name: 'queue', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['antrean', 'antrian'] } },
-  { name: 'help', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['bantuan'] } },
+  // `/start` dikirim otomatis oleh tombol START Telegram saat chat pertama
+  // kali dibuka. Tanpa alias ini, interaksi pertama siapa pun dijawab
+  // "command tidak dikenal" — kesan pertama yang buruk untuk hal yang bukan
+  // kesalahan mereka.
+  { name: 'help', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['bantuan', 'start'], en: ['start'] } },
 
   // ── Data model ─────────────────────────────────────────────────────────
   {

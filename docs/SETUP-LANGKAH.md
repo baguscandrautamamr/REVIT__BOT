@@ -162,8 +162,14 @@ insert into bot_users (chat_id, name, role)
 values (123456789, 'Bagus', 'admin');
 ```
 
-Ganti angkanya dengan chat ID dari Langkah 5. Rekan lain ditambahkan dengan
-cara sama, `role` diisi `'viewer'`.
+> **`123456789` itu angka contoh — ganti dengan chat ID dari Langkah 5.**
+> Dijalankan apa adanya, barisnya terdaftar atas nama chat yang tidak ada dan
+> bot tetap menjawab "belum terdaftar" ke kamu. Kalau terlanjur:
+> ```sql
+> delete from bot_users where chat_id = 123456789;
+> ```
+
+Rekan lain ditambahkan dengan cara sama, `role` diisi `'viewer'`.
 
 **Lalu buka lagi URL Langkah 4.** Sekarang tabel `bot_users` sudah berisi
 admin, jadi menu command admin ikut terpasang — sebelumnya dilewati karena
@@ -302,8 +308,23 @@ desk sambil memperbaikinya.
 
 ## Kalau ada yang tidak jalan
 
+**Mulai dari satu URL ini** — ia memeriksa seluruh rantai sekaligus dan
+menyebutkan masalahnya dalam kalimat, bukan kode:
+
+```
+https://revit-bot.vercel.app/api/admin/diag?secret=<SECRET>
+```
+
+Yang dilaporkan: env yang kosong, baris `machine_state`, isi `bot_users`,
+validitas token bot, status webhook (`url`, `pending_update_count`,
+`last_error_message`), dan keberadaan tabel `tg_updates`. Bagian `problems`
+berisi daftar yang perlu diperbaiki; kalau kosong, semuanya benar.
+
+Token bot tidak pernah muncul di URL — dibaca dari env di sisi server.
+
 | Gejala | Cek pertama |
 |---|---|
+| **Bot diam total** | `/api/admin/diag` → bagian `webhook.url`. Kosong = belum dipasang |
 | Semua URL 404 | Langkah 1 — deployment belum Production |
 | `/api/health` → `missingEnv` terisi | Langkah 2, lalu **redeploy** |
 | Panel tampil polos tanpa warna | Aset CSS 404 — pastikan deployment memakai commit terbaru |
