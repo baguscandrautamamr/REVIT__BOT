@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>RevitTelegramBridge</AssemblyName>
+    <RootNamespace>RevitTelegramBridge</RootNamespace>
+    <!-- Revit memuat DLL ke AppDomain-nya sendiri; jangan salin dependensi
+         Revit ke output karena akan bentrok dengan yang sudah dimuat Revit. -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- Sesuaikan path kalau Revit dipasang di lokasi lain. -->
+  <PropertyGroup>
+    <RevitDir Condition="'$(RevitDir)' == ''">C:\Program Files\Autodesk\Revit 2025\</RevitDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitDir)RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitDir)RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+  <!-- Salin manifest + DLL ke folder add-in Revit setiap kali build.
+       Revit harus ditutup saat build, kalau tidak DLL-nya terkunci. -->
+  <Target Name="DeployAddin" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <PropertyGroup>
+      <AddinDir>$(AppData)\Autodesk\Revit\Addins\2025\</AddinDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(AddinDir)RevitTelegramBridge" />
+    <Copy SourceFiles="$(ProjectDir)RevitTelegramBridge.addin" DestinationFolder="$(AddinDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AddinDir)RevitTelegramBridge" />
+  </Target>
+
+</Project>

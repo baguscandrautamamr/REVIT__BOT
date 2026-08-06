@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Simpan berkas ini di:
+    %APPDATA%\Autodesk\Revit\Addins\2025\RevitTelegramBridge.addin
+
+  Assembly menunjuk ke subfolder supaya DLL tidak tercampur dengan add-in lain.
+  GUID harus unik — kalau kamu menyalin proyek ini untuk bot kedua, ganti GUID-nya
+  (PowerShell: [guid]::NewGuid()), kalau tidak Revit hanya memuat salah satu.
+-->
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Revit Telegram Bridge</Name>
+    <Assembly>RevitTelegramBridge\RevitTelegramBridge.dll</Assembly>
+    <FullClassName>RevitTelegramBridge.App</FullClassName>
+    <ClientId>7d3c1f42-9a86-4a1e-bf3d-2c6a5e4b81d7</ClientId>
+    <VendorId>RVTB</VendorId>
+    <VendorDescription>Internal — Revit Telegram Bridge</VendorDescription>
+  </AddIn>
+</RevitAddIns>

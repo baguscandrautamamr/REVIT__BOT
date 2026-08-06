@@ -1,0 +1,140 @@
+/**
+ * Penyusun teks balasan yang dibuat SERVER (bukan hasil dari Revit).
+ * Semua keluaran di sini sudah aman untuk `parse_mode: 'MarkdownV2'`.
+ */
+import { COMMANDS, type Section } from './commands';
+import { code, mdv2 } from './telegram';
+import { translator, type Locale } from './i18n';
+import { isOnline } from './limits';
+import type { BotUser, CommandRow, MachineState, Role } from './db';
+
+const SECTION_KEY: Record<Section, string> = {
+  info: 'help.sectionInfo',
+  query: 'help.sectionQuery',
+  export: 'help.sectionExport',
+  modify: 'help.sectionModify',
+  admin: 'help.sectionAdmin',
+};
+
+const SECTION_ORDER: Section[] = ['info', 'query', 'export', 'modify', 'admin'];
+
+export function helpText(locale: Locale, role: Role): string {
+  const t = translator(locale);
+  const out: string[] = [`*${mdv2(t('help.title'))}*`, ''];
+
+  let hidden = 0;
+  for (const section of SECTION_ORDER) {
+    const items = COMMANDS.filter((c) => c.section === section);
+    const visible = items.filter((c) => role === 'admin' || c.role === 'viewer');
+    hidden += items.length - visible.length;
+    if (!visible.length) continue;
+
+    out.push(`*${mdv2(t(SECTION_KEY[section]))}*`);
+    for (const c of visible) {
+      const usage = c.usage?.[locale];
+      const line = usage ? usage : `/${c.name}`;
+      out.push(`${mdv2(line)} — ${mdv2(t(`commandDesc.${c.name}`))}`);
+    }
+    out.push('');
+  }
+
+  out.push(mdv2(t('help.roleNote', { role })));
+  if (hidden) out.push(mdv2(t('help.hiddenNote', { n: hidden })));
+  out.push('', mdv2(t('help.footer')));
+  return out.join('\n');
+}
+
+export function statusText(
+  locale: Locale,
+  machine: MachineState,
+  queue: { pending: CommandRow[]; running: CommandRow[] },
+): string {
+  const t = translator(locale);
+  const online = isOnline(machine.last_seen_at);
+  const lines: string[] = [`*${mdv2(t('status.title'))}*`, ''];
+
+  lines.push(
+    mdv2(
+      online
+        ? t('status.online', { ago: relative(machine.last_seen_at!, locale) })
+        : t('status.offline', {
+            since: machine.last_seen_at ? absolute(machine.last_seen_at, locale) : '—',
+          }),
+    ),
+  );
+
+  lines.push(
+    mdv2(machine.active_doc ? t('status.model', { title: machine.active_doc }) : t('status.noModel')),
+  );
+  lines.push(
+    mdv2(
+      t('status.revit', {
+        version: machine.revit_version ?? '—',
+        addin: machine.addin_version ?? '—',
+      }),
+    ),
+  );
+  lines.push(
+    mdv2(t('status.queue', { pending: queue.pending.length, running: queue.running.length })),
+  );
+  if (machine.is_paused) lines.push(mdv2(t('status.paused')));
+
+  return lines.join('\n');
+}
+
+export function queueText(locale: Locale, chatId: number, queue: {
+  pending: CommandRow[];
+  running: CommandRow[];
+}): string {
+  const t = translator(locale);
+  const all = [...queue.running, ...queue.pending];
+  if (!all.length) return mdv2(t('common.empty'));
+
+  const rows = all.map((job, i) => {
+    const mine = job.chat_id === chatId ? '›' : ' ';
+    const mark = job.status === 'running' ? '▶' : '·';
+    return `${mine} ${mark} ${String(i + 1).padStart(2)}  /${job.command.padEnd(9)} ${job.id.slice(0, 8)}`;
+  });
+
+  const mineIndex = all.findIndex((j) => j.chat_id === chatId);
+  const head = mineIndex >= 0 ? t('common.position', { pos: mineIndex + 1, total: all.length }) : '';
+  return (head ? mdv2(head) + '\n' : '') + code(rows.join('\n'));
+}
+
+export function usersText(locale: Locale, users: BotUser[]): string {
+  const t = translator(locale);
+  const rows = users.map((u) =>
+    t('admin.userRow', {
+      name: u.name,
+      role: u.role,
+      status: u.is_active ? 'aktif' : 'nonaktif',
+    }),
+  );
+  return `*${mdv2(t('admin.usersTitle'))}*\n` + code(rows.join('\n'));
+}
+
+/** Hasil dari add-in: teks bebas → selalu masuk blok kode supaya aman. */
+export function resultText(result: Record<string, unknown> | null): string {
+  const text = typeof result?.text === 'string' ? result.text : '';
+  if (!text) return '';
+  // Tabel angka lebih terbaca monospace, dan blok kode menghindari seluruh
+  // masalah escaping MarkdownV2 untuk teks yang datang dari Revit.
+  return code(text);
+}
+
+function relative(iso: string, locale: Locale): string {
+  const diffSec = Math.round((new Date(iso).getTime() - Date.now()) / 1000);
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  const abs = Math.abs(diffSec);
+  if (abs < 60) return rtf.format(diffSec, 'second');
+  if (abs < 3600) return rtf.format(Math.round(diffSec / 60), 'minute');
+  if (abs < 86400) return rtf.format(Math.round(diffSec / 3600), 'hour');
+  return rtf.format(Math.round(diffSec / 86400), 'day');
+}
+
+function absolute(iso: string, locale: Locale): string {
+  return new Intl.DateTimeFormat(locale === 'id' ? 'id-ID' : 'en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(iso));
+}

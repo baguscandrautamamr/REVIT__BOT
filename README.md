@@ -12,7 +12,8 @@ di Revit.
 
 | Kalau kamu mau… | Baca |
 |---|---|
-| Memasang dan menjalankan botnya | **[docs/TELEGRAM-BOT-GUIDE.id.md](docs/TELEGRAM-BOT-GUIDE.id.md)** ([English](docs/TELEGRAM-BOT-GUIDE.en.md)) |
+| **Memasang dari nol, langkah demi langkah** | **[docs/SETUP-LANGKAH.md](docs/SETUP-LANGKAH.md)** ← mulai di sini |
+| Referensi lengkap semua sisi Telegram | [docs/TELEGRAM-BOT-GUIDE.id.md](docs/TELEGRAM-BOT-GUIDE.id.md) ([English](docs/TELEGRAM-BOT-GUIDE.en.md)) |
 | Tahu kenapa arsitekturnya begini | [docs/CATATAN-ARSITEKTUR.md](docs/CATATAN-ARSITEKTUR.md) |
 | Menambah/mengubah teks bot | [docs/DUAL-LANGUAGE.md](docs/DUAL-LANGUAGE.md) |
 | Mengubah tampilan panel web | [docs/THEMING.md](docs/THEMING.md) |
@@ -39,14 +40,28 @@ thread — polling di background, eksekusi lewat `ExternalEvent`.
 
 ```
 api/
+  health.ts         cek env + koneksi database (buka di browser setelah deploy)
   _lib/
     i18n/           katalog ID + EN, resolusi bahasa
     commands.ts     daftar command: role, alias, section  (sumber tunggal)
     telegram.ts     escaping MarkdownV2, kirim pesan/file, verifikasi initData
+    db.ts           akses Supabase lewat PostgREST (service role, server-only)
+    limits.ts       batas per role, cooldown, ambang online
+    reply.ts        penyusun teks /help, /status, /queue, /users
   telegram/
+    webhook.ts      pintu masuk Telegram: validasi, routing, antrean
     preferences.ts  handler /lang dan /theme
+  machine/
+    claim.ts        add-in ambil job (merangkap heartbeat)
+    report.ts       add-in lapor hasil → edit pesan "⏳" + kirim file
   panel/
     state.ts        data untuk panel web (butuh initData sah)
+addin/
+  App.cs            OnStartup: buat ExternalEvent, start worker
+  Polling/          loop polling — TANPA Revit API
+  Events/           IExternalEventHandler — main thread
+  Commands/         /levels /sheets /count /pdf
+  set-token.ps1     simpan machine token terenkripsi DPAPI
 web/
   index.html        panel / Telegram Mini App
   theme.css         token + material kaca, light & dark
@@ -107,7 +122,14 @@ tampilan.
 
 ## Status
 
-Kerangka + dokumentasi. Yang belum ada dan menyusul sesuai urutan bangun di
-panduan (§15): handler webhook penuh, endpoint `claim`/`report`, dan add-in
-Revit (`addin/`). Mulai dari `/status` — command kecil itu membuktikan seluruh
-rantai Telegram → Vercel → Supabase → polling → `ExternalEvent` → balik.
+| Bagian | Status |
+|---|---|
+| Server (webhook, claim, report, panel, health) | Lengkap, `tsc` bersih |
+| Dua bahasa + dua tema | Lengkap, `check-i18n` hijau |
+| Panel web / Mini App | Lengkap, dirender & diuji di Chromium |
+| Add-in Revit | Ditulis lengkap, **belum dikompilasi terhadap `RevitAPI.dll` asli** |
+| Command di add-in | `/levels` `/sheets` `/count` `/pdf` — sisanya tinggal menambah satu berkas |
+
+Command yang belum ada di add-in tetap dijawab ("belum diimplementasi"), bukan
+menggantung. Mulai dari `/status`: command kecil itu membuktikan seluruh rantai
+Telegram → Vercel → Supabase → polling → `ExternalEvent` → balik.
