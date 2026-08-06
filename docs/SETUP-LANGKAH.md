@@ -58,12 +58,27 @@ Vercel → **Settings → Environment Variables**, semuanya untuk
 | `SUPABASE_URL` | dari Supabase → Settings → API |
 | `SUPABASE_SERVICE_ROLE_KEY` | idem. **Server-only** — jangan pernah masuk ke klien |
 | `TELEGRAM_BOT_TOKEN` | dari BotFather (`/mybots` → pilih bot → API Token) |
-| `TELEGRAM_WEBHOOK_SECRET` | acak, hanya `A-Z a-z 0-9 _ -` |
+| `TELEGRAM_WEBHOOK_SECRET` | acak, **hanya `A-Z a-z 0-9 _ -`** — lihat peringatan di bawah |
 | `MACHINE_TOKEN` | acak. Untuk add-in Revit, **bukan** token bot |
 | `PANEL_URL` | `https://revit-bot.vercel.app/panel` |
 
+> ### ⚠️ Jangan pakai base64 untuk `TELEGRAM_WEBHOOK_SECRET`
+>
+> Telegram hanya menerima **`A-Z a-z 0-9 _ -`** (1–256 karakter) untuk
+> `secret_token`. `openssl rand -base64 32` — cara paling umum orang membuat
+> string acak — menghasilkan `+`, `/`, dan `=`, dan akibatnya ganda:
+>
+> 1. `setWebhook` ditolak Telegram, jadi webhook tidak pernah terpasang.
+> 2. `+` di query string dibaca browser sebagai **spasi**, jadi
+>    `/api/admin/setup?secret=…` menjawab `forbidden` walaupun kamu menyalin
+>    secret yang benar.
+>
+> Gejalanya cuma "bot diam" — tanpa satu pun petunjuk ke arah sini. Kalau
+> `/api/health` melaporkan `"webhookSecretFormat": "invalid"`, inilah
+> penyebabnya. Yang aman: **`openssl rand -hex 32`**.
+
 Tidak punya terminal untuk membuat string acak? Buka konsol browser (F12) dan
-jalankan:
+jalankan — hasilnya heksadesimal, jadi selalu aman:
 
 ```js
 crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '')

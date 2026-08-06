@@ -15,13 +15,20 @@ import crypto from 'node:crypto';
 
 import { applyBotSetup } from '../_lib/botsetup';
 import * as db from '../_lib/db';
-import { ENV, missingEnv } from '../_lib/env';
+import { ENV, WEBHOOK_SECRET_RULE, missingEnv, webhookSecretValid } from '../_lib/env';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const provided = String(req.query.secret ?? '');
   if (!ENV.webhookSecret || !timingSafeEqual(provided, ENV.webhookSecret)) {
-    // Pesannya sengaja tidak membedakan "secret salah" dan "secret kosong".
-    return res.status(403).json({ error: 'forbidden' });
+    // Pesannya tidak membedakan "secret salah" dan "secret kosong" — itu
+    // informasi untuk penebak. Tapi format secret yang TERSIMPAN memang
+    // dilaporkan: itu soal konfigurasi server, bukan nilainya, dan tanpa
+    // petunjuk ini 403-nya buntu (`+` di URL terbaca sebagai spasi, jadi
+    // secret yang benar pun tidak akan pernah cocok).
+    return res.status(403).json({
+      error: 'forbidden',
+      ...(webhookSecretValid() ? {} : { hint: WEBHOOK_SECRET_RULE }),
+    });
   }
 
   const missing = missingEnv();

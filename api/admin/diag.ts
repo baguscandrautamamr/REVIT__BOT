@@ -13,12 +13,15 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'node:crypto';
 
 import * as db from '../_lib/db';
-import { ENV, missingEnv } from '../_lib/env';
+import { ENV, WEBHOOK_SECRET_RULE, missingEnv, webhookSecretValid } from '../_lib/env';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const provided = String(req.query.secret ?? '');
   if (!ENV.webhookSecret || !timingSafeEqual(provided, ENV.webhookSecret)) {
-    return res.status(403).json({ error: 'forbidden' });
+    return res.status(403).json({
+      error: 'forbidden',
+      ...(webhookSecretValid() ? {} : { hint: WEBHOOK_SECRET_RULE }),
+    });
   }
 
   const host = req.headers['x-forwarded-host'] ?? req.headers.host;
@@ -26,10 +29,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const expectedWebhook = `${proto}://${host}/api/telegram/webhook`;
 
   const out: Record<string, unknown> = {
-    env: { missing: missingEnv(), panelUrl: ENV.panelUrl || null },
+    env: {
+      missing: missingEnv(),
+      panelUrl: ENV.panelUrl || null,
+      webhookSecretFormat: webhookSecretValid() ? 'ok' : 'invalid',
+    },
     expectedWebhook,
   };
   const problems: string[] = [];
+
+  if (!webhookSecretValid()) problems.push(WEBHOOK_SECRET_RULE);
 
   // ── Database ───────────────────────────────────────────────────────────
   try {

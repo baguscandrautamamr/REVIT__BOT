@@ -24,6 +24,27 @@ const REQUIRED = {
   MACHINE_TOKEN: ENV.machineToken,
 };
 
+/**
+ * Telegram hanya menerima A-Z a-z 0-9 _ - untuk `secret_token` (1–256 char).
+ *
+ * Ini jebakan yang mahal: `openssl rand -base64 32` — cara paling umum orang
+ * membuat string acak — menghasilkan `+`, `/`, dan `=`. Akibatnya ganda:
+ * `setWebhook` ditolak Telegram, DAN `+` di query string dibaca sebagai spasi
+ * oleh browser sehingga endpoint admin menjawab 403 sebelum sempat mencoba.
+ * Gejalanya cuma "bot diam", tanpa petunjuk ke arah sini.
+ *
+ * Yang aman: `openssl rand -hex 32`.
+ */
+const WEBHOOK_SECRET_RE = /^[A-Za-z0-9_-]{1,256}$/;
+
+export function webhookSecretValid(): boolean {
+  return WEBHOOK_SECRET_RE.test(ENV.webhookSecret);
+}
+
+export const WEBHOOK_SECRET_RULE =
+  'TELEGRAM_WEBHOOK_SECRET hanya boleh berisi A-Z a-z 0-9 _ - (1–256 karakter). ' +
+  'Karakter seperti + / = ditolak Telegram. Buat ulang dengan: openssl rand -hex 32';
+
 /** Nama env yang kosong. Hanya NAMA — nilainya tidak pernah keluar. */
 export function missingEnv(): string[] {
   return Object.entries(REQUIRED)

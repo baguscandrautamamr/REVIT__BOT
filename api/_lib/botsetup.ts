@@ -65,6 +65,16 @@ export async function applyBotSetup(opts: SetupOptions): Promise<SetupReport> {
 
   // 1. Webhook. Dipasang lebih dulu — tanpa ini bot diam total, dan menu
   //    yang rapi tidak ada gunanya.
+  if (opts.webhookSecret && !/^[A-Za-z0-9_-]{1,256}$/.test(opts.webhookSecret)) {
+    // Dicegat di sini supaya pesannya menyebut penyebabnya. Telegram sendiri
+    // hanya menjawab "Bad Request: bad webhook", yang tidak menuntun ke mana pun.
+    throw new Error(
+      'TELEGRAM_WEBHOOK_SECRET mengandung karakter yang ditolak Telegram. ' +
+        'Hanya A-Z a-z 0-9 _ - yang diizinkan (1–256 karakter) — karakter + / = ' +
+        'khas base64 tidak boleh. Buat ulang dengan: openssl rand -hex 32',
+    );
+  }
+
   if (opts.webhookSecret) {
     await call('setWebhook', {
       url: `${opts.baseUrl}/api/telegram/webhook`,
