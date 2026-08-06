@@ -272,19 +272,36 @@ Dan ketuk tombol **Panel** di sebelah kotak ketik untuk membuka Mini App.
 Ini yang membuat `/status` berubah hijau dan `/count`, `/levels`, `/pdf`
 benar-benar bekerja. Langkah ini **butuh terminal** di PC Revit.
 
-**a. Build** — perlu .NET 8 SDK dan Revit 2025 terpasang. **Tutup Revit dulu**,
-kalau terbuka DLL-nya terkunci dan build gagal.
+**a. Ambil DLL-nya.** Ada dua jalan; yang pertama tidak perlu terminal sama
+sekali.
+
+**Jalan 1 — unduh hasil build GitHub (paling gampang).** Setiap push ke repo ini
+membangun add-in-nya otomatis. Buka tab **Actions** → workflow **addin** → run
+paling atas → bagian **Artifacts** → unduh `RevitTelegramBridge-…`. Ekstrak, lalu
+ikuti `CARA-PASANG.txt` di dalamnya: isinya disalin ke
+`%APPDATA%\Autodesk\Revit\Addins\2025\` dengan susunan manifest di akar dan DLL
+di subfolder. **Tutup Revit dulu** — kalau terbuka, DLL-nya terkunci.
+
+Untuk versi yang sengaja dikeluarkan, beri tag `v…` (mis. `git tag v1.0.0 && git
+push origin v1.0.0`); zip-nya otomatis muncul di halaman **Releases**.
+
+**Jalan 2 — build sendiri di PC Revit.** Perlu .NET 8 SDK. **Tutup Revit dulu.**
 
 ```powershell
 dotnet build -c Release
 ```
 
-Build otomatis menyalin `.addin` + DLL ke
-`%APPDATA%\Autodesk\Revit\Addins\2025\`. Revit di lokasi lain:
+Kalau Revit 2025 terpasang, build memakai `RevitAPI.dll` asli dari folder
+instalasinya, lalu menyalin `.addin` + DLL ke
+`%APPDATA%\Autodesk\Revit\Addins\2025\` sendiri. Revit di lokasi lain:
 
 ```powershell
 dotnet build -c Release -p:RevitDir="D:\Autodesk\Revit 2025\"
 ```
+
+Kalau Revit **tidak** terpasang, build tetap berhasil: proyeknya jatuh ke
+assembly referensi dari NuGet. Salin-otomatis ke folder Addins tetap jalan
+selama OS-nya Windows.
 
 **b. Pasang machine token** — Windows PowerShell (bukan PowerShell 7), di
 folder `addin/`:

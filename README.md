@@ -62,7 +62,7 @@ api/
   panel/
     state.ts        data untuk panel web (butuh initData sah)
     users.ts        tambah/cabut akses user — admin saja, dari panel
-addin/
+addin/                DLL siap pasang ada di tab Actions → workflow "addin"
   App.cs            OnStartup: buat ExternalEvent, start worker
   Polling/          loop polling — TANPA Revit API
   Events/           IExternalEventHandler — main thread

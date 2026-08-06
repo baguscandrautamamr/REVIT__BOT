@@ -2,24 +2,48 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
+    <!-- UseWPF sengaja TIDAK dinyalakan: tidak satu pun berkas di sini memakai
+         System.Windows, dan menyalakannya menyeret Windows Desktop SDK yang
+         membuat proyek ini hanya bisa dibangun di Windows. Kalau nanti ada
+         jendela WPF, nyalakan lagi — dan pindahkan build CI ke windows-latest. -->
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>RevitTelegramBridge</AssemblyName>
     <RootNamespace>RevitTelegramBridge</RootNamespace>
-    <!-- Revit memuat DLL ke AppDomain-nya sendiri; jangan salin dependensi
-         Revit ke output karena akan bentrok dengan yang sudah dimuat Revit. -->
-    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <!-- Dependensi NuGet ikut disalin ke output, sebab yang tersisa memang HARUS
+         ikut: System.Security.Cryptography.ProtectedData tidak ada di runtime
+         .NET 8 yang dipakai Revit, jadi tanpa disalin add-in mati saat pertama
+         membaca token. Assembly Revit sendiri tetap tidak ikut — keduanya sudah
+         ditandai Private=false / ExcludeAssets=runtime di bawah, jadi tidak ada
+         salinan kedua yang bentrok dengan yang sudah dimuat Revit. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
-  <!-- Sesuaikan path kalau Revit dipasang di lokasi lain. -->
+  <!-- ── Referensi Revit API: dua jalur, dipilih otomatis ───────────────────
+       Di PC yang ada Revit-nya: pakai DLL asli dari folder instalasi. Itu yang
+       paling benar — persis versi yang akan memuat add-in ini nanti.
+
+       Di mana pun Revit tidak terpasang (GitHub Actions, laptop tanpa Revit):
+       jatuh ke paket NuGet berisi assembly REFERENSI yang sama. Assembly
+       referensi hanya memuat tanda tangan API, bukan implementasinya — cukup
+       untuk meng-compile, tidak cukup untuk menjalankan Revit, dan memang tidak
+       perlu: yang menjalankan cuma Revit di PC tujuan.
+
+       Tanpa jalur kedua, build otomatis mustahil — Autodesk tidak mengizinkan
+       RevitAPI.dll disalin ke repo, dan runner GitHub tidak punya Revit.
+
+       Versinya dikunci ke 2025.0.2, rilis 2025 paling awal yang stabil. Sengaja
+       yang terendah: DLL yang di-compile terhadap API lama tetap jalan di Revit
+       2025 yang lebih baru, sedangkan sebaliknya tidak. -->
   <PropertyGroup>
+    <!-- Sesuaikan kalau Revit dipasang di lokasi lain. -->
     <RevitDir Condition="'$(RevitDir)' == ''">C:\Program Files\Autodesk\Revit 2025\</RevitDir>
+    <UseInstalledRevitApi Condition="Exists('$(RevitDir)RevitAPI.dll')">true</UseInstalledRevitApi>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(UseInstalledRevitApi)' == 'true'">
     <Reference Include="RevitAPI">
       <HintPath>$(RevitDir)RevitAPI.dll</HintPath>
       <Private>false</Private>
@@ -30,8 +54,25 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(UseInstalledRevitApi)' != 'true'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2025.0.2">
+      <!-- Revit sudah memuat DLL ini sendiri; ikut menyalinnya ke output justru
+           menimbulkan dua salinan tipe yang sama di satu AppDomain. -->
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2025.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
   <ItemGroup>
-    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <!-- DPAPI (TokenStore). Di .NET Framework tipe ini ada di mscorlib, tapi di
+         .NET 8 ia dipindah ke paket terpisah — tanpa baris ini `ProtectedData`
+         tidak dikenal dan proyeknya tidak compile sama sekali.
+         System.Text.Json TIDAK didaftarkan: sejak .NET Core 3.0 ia bagian dari
+         runtime bawaan, jadi mereferensikannya hanya menambah satu DLL di
+         folder add-in tanpa mengubah versi yang benar-benar dipakai. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
   <!-- Salin manifest + DLL ke folder add-in Revit setiap kali build.
