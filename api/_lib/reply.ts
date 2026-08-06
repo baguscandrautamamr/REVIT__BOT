@@ -2,7 +2,7 @@
  * Penyusun teks balasan yang dibuat SERVER (bukan hasil dari Revit).
  * Semua keluaran di sini sudah aman untuk `parse_mode: 'MarkdownV2'`.
  */
-import { COMMANDS, type Section } from './commands';
+import { COMMANDS, notImplemented, type Section } from './commands';
 import { code, codeBlocks, mdv2 } from './telegram';
 import { translator, type Locale } from './i18n';
 import { isOnline } from './limits';
@@ -23,6 +23,7 @@ export function helpText(locale: Locale, role: Role): string {
   const out: string[] = [`*${mdv2(t('help.title'))}*`, ''];
 
   let hidden = 0;
+  let soon = 0;
   for (const section of SECTION_ORDER) {
     const items = COMMANDS.filter((c) => c.section === section);
     const visible = items.filter((c) => role === 'admin' || c.role === 'viewer');
@@ -33,13 +34,19 @@ export function helpText(locale: Locale, role: Role): string {
     for (const c of visible) {
       const usage = c.usage?.[locale];
       const line = usage ? usage : `/${c.name}`;
-      out.push(`${mdv2(line)} — ${mdv2(t(`commandDesc.${c.name}`))}`);
+      // Command yang add-in-nya belum ada tetap didaftar — orang perlu tahu
+      // rencananya — tapi ditandai. Mendaftarnya tanpa tanda apa pun adalah
+      // janji yang pasti dilanggar begitu ada yang mengetiknya.
+      const mark = notImplemented(c) ? ` ${t('help.soon')}` : '';
+      if (mark) soon++;
+      out.push(`${mdv2(line)} — ${mdv2(t(`commandDesc.${c.name}`) + mark)}`);
     }
     out.push('');
   }
 
   out.push(mdv2(t('help.roleNote', { role })));
   if (hidden) out.push(mdv2(t('help.hiddenNote', { n: hidden })));
+  if (soon) out.push(mdv2(t('help.soonNote', { n: soon })));
   out.push('', mdv2(t('help.footer')));
   return out.join('\n');
 }
@@ -126,6 +133,21 @@ export function usersText(locale: Locale, users: BotUser[]): string {
 export function resultBlocks(result: Record<string, unknown> | null): string[] {
   const text = typeof result?.text === 'string' ? result.text : '';
   return codeBlocks(text);
+}
+
+/**
+ * Lama eksekusi di dalam Revit, dalam kalimat.
+ *
+ * Ditampilkan supaya "kenapa lama?" punya jawaban berupa angka. Tanpa ini
+ * export yang memang berat dan job yang tersangkut sama-sama terlihat sebagai
+ * "⏳" yang tidak kunjung berubah.
+ */
+export function durationText(ms: number, locale: Locale): string {
+  const t = translator(locale);
+  const seconds = Math.round(ms / 1000);
+  return seconds < 90
+    ? t('common.seconds', { n: seconds })
+    : t('common.minutes', { n: Math.round(seconds / 60) });
 }
 
 /** "3 menit lalu". `null` → em dash, supaya pemanggil tidak perlu menjaga itu. */

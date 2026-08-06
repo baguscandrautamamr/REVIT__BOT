@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { COMMANDS, type CommandSpec } from '../api/_lib/commands';
+import { COMMANDS, notImplemented, type CommandSpec } from '../api/_lib/commands';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appJsPath = join(here, '..', 'web', 'app.js');
@@ -32,6 +32,7 @@ interface PanelEntry {
   name: string;
   role: string;
   section: string;
+  soon: boolean;
 }
 
 const panel: PanelEntry[] = [];
@@ -42,6 +43,7 @@ for (const line of block[1].split('\n')) {
     name: name[1],
     role: line.match(/role:\s*'([^']+)'/)?.[1] ?? '',
     section: line.match(/section:\s*'([^']+)'/)?.[1] ?? '',
+    soon: /soon:\s*true/.test(line),
   });
 }
 
@@ -60,6 +62,16 @@ for (const spec of COMMANDS) {
   }
   if (entry.section !== spec.section) {
     errors.push(`/${spec.name}: section panel '${entry.section}' ≠ server '${spec.section}'`);
+  }
+  // Panel harus meredupkan PERSIS command yang ditolak server. Menyimpang ke
+  // salah satu arah sama-sama buruk: tombol terang yang pasti gagal, atau
+  // tombol redup untuk command yang sebenarnya sudah jalan.
+  const soon = notImplemented(spec);
+  if (entry.soon !== soon) {
+    errors.push(
+      `/${spec.name}: panel menandai soon=${entry.soon}, server ${soon ? 'MENOLAK' : 'menerima'} ` +
+        `(addin: ${spec.addin === true}). Samakan dengan api/_lib/commands.ts.`,
+    );
   }
 }
 

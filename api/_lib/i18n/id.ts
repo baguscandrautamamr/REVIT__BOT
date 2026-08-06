@@ -49,6 +49,9 @@ export const id = {
       `Level "${p.level}" tidak ditemukan. Ketik /levels untuk daftar nama persis.`,
     viewNotFound: (p: Params) => `Sheet/view "${p.view}" tidak ditemukan.`,
     revitError: (p: Params) => `Revit menolak: ${p.message}`,
+    notImplemented: (p: Params) =>
+      `${p.cmd} belum tersedia — add-in Revit belum punya implementasinya, ` +
+      'jadi tidak ada gunanya diantre. Command yang sudah jalan ditandai di /help.',
     stuck:
       '⚠️ Terputus di tengah jalan — Revit ditutup atau add-in berhenti sebelum hasilnya dikirim. Jalankan ulang command-nya.',
     workerPaused:
@@ -70,6 +73,11 @@ export const id = {
     roleNote: (p: Params) => `Role kamu: ${p.role}`,
     hiddenNote: (p: Params) =>
       `${p.n} command lain khusus admin dan disembunyikan.`,
+    // Penanda yang menempel di baris command yang add-in-nya belum ada.
+    // Tanpa ini /help menjanjikan 9 command yang pasti ditolak begitu dicoba.
+    soon: '— belum tersedia',
+    soonNote: (p: Params) =>
+      `${p.n} command bertanda "belum tersedia" masih menunggu implementasi di add-in Revit. Mengetiknya akan ditolak, bukan diantre.`,
   },
 
   status: {
