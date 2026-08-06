@@ -190,6 +190,16 @@ export async function claimNextCommand(): Promise<CommandRow | null> {
   return claimed[0] ?? null;
 }
 
+/**
+ * Tutup job yang sedang berjalan.
+ *
+ * Filter `status=eq.running` ikut disertakan pada PATCH — sama seperti
+ * `claimNextCommand` dan `cancelCommand` — jadi hanya laporan PERTAMA yang
+ * mendapat barisnya kembali. Mengembalikan null berarti job itu sudah ditutup
+ * lebih dulu: add-in mengirim laporan dua kali, atau penyapu sudah menandainya
+ * "stuck". Tanpa filter ini laporan ganda mengedit pesan user dua kali dan
+ * mengirim ulang file PDF yang sama.
+ */
 export async function finishCommand(
   id: string,
   patch: {
@@ -199,7 +209,7 @@ export async function finishCommand(
     doc_title?: string | null;
   },
 ): Promise<CommandRow | null> {
-  const rows = await rest<CommandRow[]>(`commands?id=eq.${id}`, {
+  const rows = await rest<CommandRow[]>(`commands?id=eq.${id}&status=eq.running`, {
     method: 'PATCH',
     headers: RETURNING,
     body: JSON.stringify({ ...patch, finished_at: new Date().toISOString() }),
