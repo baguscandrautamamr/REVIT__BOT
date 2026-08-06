@@ -259,14 +259,18 @@ export async function expireStale(): Promise<CommandRow[]> {
 }
 
 /**
- * Job yang sudah `running` tapi tidak pernah dilaporkan — Revit ditutup di
- * tengah jalan, add-in di-restart, atau PC mati.
+ * Tandai gagal semua job `running` yang lebih tua dari `olderThanMs`.
+ *
+ * BATASNYA DITENTUKAN PEMANGGIL, dan itu bukan detail: satu angka tidak bisa
+ * membedakan export 25 sheet yang memang lama dari job yang mati bersama
+ * Revit-nya. `sweep.ts` memilih angkanya berdasarkan apa yang dilaporkan add-in
+ * — lihat catatan di sana.
  *
  * `expireStale` tidak menyentuh ini: ia hanya melihat `pending`. Tanpa penyapu
  * kedua, satu crash Revit meninggalkan baris `running` selamanya — pesan "⏳"
  * milik user tidak pernah selesai, dan /status melaporkan "1 jalan" terus.
  */
-export async function reapStuckRunning(olderThanMs: number): Promise<CommandRow[]> {
+export async function reapRunning(olderThanMs: number, reason: string): Promise<CommandRow[]> {
   const cutoff = new Date(Date.now() - olderThanMs).toISOString();
   return rest<CommandRow[]>(
     `commands?status=eq.running&started_at=lt.${cutoff}`,
@@ -275,11 +279,46 @@ export async function reapStuckRunning(olderThanMs: number): Promise<CommandRow[
       headers: RETURNING,
       body: JSON.stringify({
         status: 'failed',
-        error: 'stuck: tidak ada laporan dari add-in',
+        error: `stuck: ${reason}`,
         finished_at: new Date().toISOString(),
       }),
     },
   );
+}
+
+/**
+ * Tutup job yang SUDAH ditandai penyapu, karena laporannya ternyata datang juga.
+ *
+ * Ada karena tebakan penyapu bisa salah, dan kalau salah harganya mahal: Revit
+ * sudah selesai mengekspor 25 sheet — belasan menit kerja — dan satu-satunya
+ * alasan hasilnya dibuang adalah karena server sempat menyimpulkan job-nya mati.
+ * Menerima laporan yang terlambat mengubah kesimpulan yang salah itu menjadi
+ * berkas yang sampai.
+ *
+ * Filternya `status=eq.failed`, jadi dua laporan terlambat yang berlomba tetap
+ * hanya menghasilkan SATU pengiriman: yang kedua mendapat array kosong. Pemanggil
+ * WAJIB memastikan lebih dulu bahwa kegagalannya berasal dari penyapu (`error`
+ * berawalan `stuck:`) — job yang gagal karena Revit menolak tidak boleh
+ * dihidupkan lagi oleh laporan mana pun.
+ */
+export async function finishLateReport(
+  id: string,
+  patch: {
+    result?: Record<string, unknown> | null;
+    doc_title?: string | null;
+  },
+): Promise<CommandRow | null> {
+  const rows = await rest<CommandRow[]>(`commands?id=eq.${id}&status=eq.failed`, {
+    method: 'PATCH',
+    headers: RETURNING,
+    body: JSON.stringify({
+      ...patch,
+      status: 'done',
+      error: null,
+      finished_at: new Date().toISOString(),
+    }),
+  });
+  return rows[0] ?? null;
 }
 
 export async function queueSnapshot(): Promise<{

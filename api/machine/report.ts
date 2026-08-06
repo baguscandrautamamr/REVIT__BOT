@@ -88,10 +88,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // `finishCommand` hanya menutup job yang masih `running`. Kalau ia
     // mengembalikan null, job ini sudah ditutup lebih dulu — laporan ganda dari
-    // add-in, atau penyapu keburu menandainya "stuck". Berhenti di sini: user
-    // sudah menerima balasan, dan meneruskan berarti mengedit pesannya dua kali
-    // sekaligus mengirim filenya dua kali.
-    if (!updated) {
+    // add-in, atau penyapu keburu menandainya "stuck".
+    //
+    // Laporan ganda harus berhenti di sini: user sudah menerima balasan, dan
+    // meneruskan berarti mengedit pesannya dua kali sekaligus mengirim filenya dua
+    // kali. Tapi ada satu keadaan yang BUKAN duplikat, dan membuangnya mahal:
+    // job yang ditutup PENYAPU, lalu laporannya datang juga. Itu berarti tebakan
+    // penyapu keliru — Revit menyelesaikan kerjanya, dan satu-satunya alasan
+    // hasilnya hilang adalah kesimpulan server yang salah. `/pdf --disc` pada 25
+    // sheet A1 persis begitu: belasan menit kerja, PDF-nya jadi, dibuang di ambang
+    // pintu.
+    let closed = updated;
+    let late = false;
+
+    if (!closed) {
+      const reapedBySweeper = job.status === 'failed' && (job.error ?? '').startsWith('stuck:');
+      if (ok && reapedBySweeper) {
+        // Filternya `status=eq.failed`, jadi dua laporan terlambat yang berlomba
+        // tetap hanya menghasilkan satu pengiriman.
+        closed = await db.finishLateReport(job.id, {
+          result: { ok: true, text: body.text ?? '' },
+          doc_title: body.docTitle ?? null,
+        });
+        late = closed !== null;
+        if (late) console.warn(`[report] job ${job.id} sempat disapu, hasilnya diselamatkan`);
+      }
+    }
+
+    if (!closed) {
       console.warn(`[report] job ${job.id} sudah tertutup (${job.status}) — laporan diabaikan`);
       return res.status(200).json({ ok: true, duplicate: true });
     }
@@ -99,7 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const locale = job.lang;
     const t = translator(locale);
     let head = ok
-      ? t('common.done')
+      ? t(late ? 'common.lateResult' : 'common.done')
       : t('errors.revitError', { message: (body.error ?? '—').slice(0, MAX_ERROR_CHARS) });
 
     // Lama eksekusi hanya disebut kalau memang terasa lama. Menempelkan
@@ -109,7 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       head += ` · ${t('common.elapsed', { duration: durationText(elapsed, locale) })}`;
     }
 
-    await deliver(job, compose(mdv2(head), ok ? resultBlocks(updated.result) : []));
+    await deliver(job, compose(mdv2(head), ok ? resultBlocks(closed.result) : []));
 
     // Berkas ditangani SETELAH balasan teks terkirim, dan kegagalannya tidak
     // pernah menjatuhkan request ini. Barisnya sudah ditandai selesai; menjawab

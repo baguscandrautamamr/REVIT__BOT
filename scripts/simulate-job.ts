@@ -31,6 +31,8 @@
  *      dari bucket lewat "../"
  *  10. Jam di balasan memakai waktu kantor — bukan jam UTC milik Vercel
  *  11. Batas sheet per role tidak bisa dilewati lewat `/pdf --series`
+ *  12. Export panjang tidak dibunuh penyapu selama add-in masih mengerjakannya
+ *  13. Hasil yang tiba sesudah job disapu tetap dikirim, bukan dibuang
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -725,6 +727,105 @@ async function main() {
       Array.isArray((sheetish?.payload as Record<string, unknown>)?.views) &&
       ((sheetish?.payload as { views: string[] }).views).includes('-EP-1101'),
       JSON.stringify(sheetish?.payload));
+  }
+
+  console.log('\n12. Export panjang tidak boleh dibunuh sementara add-in masih mengerjakannya');
+  {
+    // Yang benar-benar terjadi: /pdf --disc pada 25 sheet A1. Revit masih di 11%,
+    // add-in masih heartbeat tiap 4 detik, dan penyapu menutup job-nya di menit
+    // ke-15 dengan "Revit ditutup atau add-in berhenti". Keliru, dan hasil
+    // belasan menit kerja Revit dibuang begitu tiba.
+    const { sweepAndNotify } = await import('../api/_lib/sweep');
+    const claim = (await import('../api/machine/claim')).default;
+
+    /** Job `running` yang started_at-nya digeser ke masa lalu. */
+    function ageing(minutes: number): string {
+      const id = randomUUID();
+      tables.commands.push({
+        id, chat_id: CHAT, command: 'pdf', payload: {}, lang: 'id',
+        status: 'running', tg_message_id: 700 + tables.commands.length,
+        started_at: new Date(Date.now() - minutes * 60_000).toISOString(),
+        finished_at: null, result: null, error: null, doc_title: null,
+        created_at: new Date(Date.now() - minutes * 60_000).toISOString(),
+        expires_at: new Date(Date.now() + 600_000).toISOString(),
+      });
+      return id;
+    }
+
+    // Add-in hidup DAN memegang job → tidak boleh disentuh, walau 45 menit.
+    const long = ageing(45);
+    await sweepAndNotify({ addinBusy: true });
+    check('job 45 menit dibiarkan selama add-in memegangnya', jobStatus(long) === 'running',
+      String(jobStatus(long)));
+
+    // Batas atas tetap ada: add-in bisa menggantung selamanya karena satu dialog
+    // Revit, dan "⏳" tidak boleh abadi.
+    const forever = ageing(3 * 60);
+    await sweepAndNotify({ addinBusy: true });
+    check('batas atas 2 jam tetap berlaku', jobStatus(forever) === 'failed', String(jobStatus(forever)));
+    check('…dan pesannya tidak menuduh Revit ditutup',
+      sent.some((s) => s.text?.includes('kelewat lama')),
+      sent.filter((s) => s.method === 'editMessageText').map((s) => s.text).join(' | ').slice(0, 70));
+
+    // Add-in hidup tapi TIDAK memegang job apa pun → terlantar, dan ketahuan
+    // dalam 2 menit, bukan 15.
+    const orphan = ageing(5);
+    sent.length = 0;
+    await sweepAndNotify({ addinBusy: false });
+    check('job terlantar ditutup dalam menit, bukan belasan menit',
+      jobStatus(orphan) === 'failed', String(jobStatus(orphan)));
+    check('…dan INI yang pantas disebut terputus',
+      sent.some((s) => s.text?.includes('Terputus')), String(sent.length));
+
+    // Jalur /claim benar-benar meneruskan `busy` — kalau tidak, seluruh
+    // pembedaan di atas tidak pernah aktif di produksi.
+    tables.machine_state.length = 0;
+    tables.machine_state.push({
+      id: 1, last_seen_at: new Date().toISOString(), active_doc: 'PRJ.rvt',
+      revit_version: '2025', addin_version: '0.1.0', is_paused: false, bot_enabled: true,
+    });
+    const viaClaim = ageing(45);
+    await invoke(claim, { body: { activeDoc: 'PRJ.rvt', busy: true }, headers: auth });
+    check('/claim meneruskan busy ke penyapu', jobStatus(viaClaim) === 'running',
+      String(jobStatus(viaClaim)));
+  }
+
+  console.log('\n13. Hasil yang tiba sesudah job disapu tetap dikirim, bukan dibuang');
+  {
+    // Kalau tebakan penyapu keliru, harganya belasan menit kerja Revit. Laporan
+    // yang terlambat mengubah kesimpulan yang salah menjadi berkas yang sampai.
+    const job = startJob('pdf');
+    tables.commands.find((r) => r.id === job.id)!.status = 'failed';
+    tables.commands.find((r) => r.id === job.id)!.error = 'stuck: berjalan terlalu lama';
+
+    sent.length = 0;
+    const pdf = fakePdf(2 * MB);
+    const { out } = await addinDelivers(job.id, 'PRJ_GENERAL-LV_2026-08-06.pdf', pdf, '3 sheet');
+    const doc = sent.find((s) => s.method === 'sendDocument');
+
+    check('job jadi selesai, bukan tetap gagal', jobStatus(job.id) === 'done', String(jobStatus(job.id)));
+    check('berkasnya benar-benar terkirim', !!doc && sha(doc.bytes!) === sha(pdf));
+    check('user diberi tahu hasilnya menyusul',
+      sent.some((s) => s.text?.includes('menyusul')),
+      sent.filter((s) => s.method === 'editMessageText').map((s) => s.text).join(' | ').slice(0, 70));
+    check('report tetap 200', out.status === 200);
+
+    // Yang TIDAK boleh berubah: laporan kedua tetap tidak mengirim ulang berkas.
+    const before = sent.filter((s) => s.method === 'sendDocument').length;
+    await addinDelivers(job.id, 'PRJ_GENERAL-LV_2026-08-06.pdf', pdf, '3 sheet');
+    check('laporan berikutnya tetap diabaikan',
+      sent.filter((s) => s.method === 'sendDocument').length === before, `${before}`);
+
+    // Job yang gagal karena REVIT menolak tidak boleh dihidupkan laporan mana pun.
+    const rejected = startJob('pdf');
+    tables.commands.find((r) => r.id === rejected.id)!.status = 'failed';
+    tables.commands.find((r) => r.id === rejected.id)!.error = 'Revit menolak export PDF.';
+    const sends = sent.filter((s) => s.method === 'sendDocument').length;
+    await addinDelivers(rejected.id, 'x.pdf', fakePdf(1024), 'ok');
+    check('kegagalan Revit tidak bisa dihidupkan laporan terlambat',
+      jobStatus(rejected.id) === 'failed' &&
+      sent.filter((s) => s.method === 'sendDocument').length === sends,
+      String(jobStatus(rejected.id)));
   }
 
   server.close();

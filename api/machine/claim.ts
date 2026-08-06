@@ -36,7 +36,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // supaya command basi tidak tiba-tiba jalan setelah Revit dibuka lagi.
     // Sekaligus menutup job `running` yang ditinggal mati — dan yang penting,
     // memberi tahu pemiliknya, bukan cuma mengubah baris di database.
-    await sweepQuietly();
+    //
+    // `busy` diteruskan karena hanya panggilan INI yang mengetahuinya, dan itu
+    // satu-satunya cara membedakan export 25 sheet yang memang lama dari job yang
+    // mati bersama Revit-nya. Tanpa itu penyapu hanya punya timer, dan timer
+    // menutup job yang masih dikerjakan dengan alasan "Revit ditutup".
+    await sweepQuietly({ addinBusy: body.busy === true });
 
     const machine = await db.getMachine();
     if (machine.is_paused || !machine.bot_enabled) {

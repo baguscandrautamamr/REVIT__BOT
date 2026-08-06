@@ -16,7 +16,7 @@
  */
 import * as db from './db';
 import { translator } from './i18n';
-import { STUCK_AFTER_MS } from './limits';
+import { MAX_RUNTIME_MS, ORPHAN_AFTER_MS, STUCK_AFTER_MS, isOnline } from './limits';
 import { editMessageText, mdv2, sendMessage } from './telegram';
 
 export interface SweepReport {
@@ -24,24 +24,105 @@ export interface SweepReport {
   stuck: number;
 }
 
-export async function sweepAndNotify(): Promise<SweepReport> {
+/**
+ * Apa yang diketahui pemanggil tentang keadaan add-in saat ini.
+ *
+ * `machine/claim.ts` tahu dua hal yang tidak bisa diketahui dari database:
+ * add-in SEDANG memanggil (jadi ia hidup), dan `busy` — apakah ia masih memegang
+ * sebuah job. `telegram/webhook.ts` tidak tahu keduanya dan mengirim objek kosong.
+ */
+export interface SweepContext {
+  /** true/false dari heartbeat add-in; undefined = pemanggil tidak tahu. */
+  addinBusy?: boolean;
+}
+
+/**
+ * Berapa lama sebuah job `running` boleh hidup sebelum dianggap mati, dan
+ * kenapa.
+ *
+ * Ini bagian yang sebelumnya salah, dan salahnya mahal. Dulu ambangnya SATU
+ * angka — 15 menit — untuk dua keadaan yang sangat berbeda:
+ *
+ *   /pdf --disc pada 25 sheet A1 memang berjalan lebih dari 15 menit. Revit masih
+ *   di 11%, add-in masih mengirim heartbeat tiap 4 detik, semuanya sehat — dan
+ *   penyapu menutup job-nya dengan "Revit ditutup atau add-in berhenti".
+ *   Pesannya bukan cuma tidak menolong, ia KELIRU, dan hasil belasan menit kerja
+ *   Revit dibuang begitu tiba.
+ *
+ * Yang menentukan sekarang bukan lama, melainkan apakah masih ada yang
+ * mengerjakannya:
+ *
+ *   add-in hidup + memegang job   → biarkan, sampai batas atas MAX_RUNTIME_MS
+ *   add-in hidup + tidak memegang → terlantar; ORPHAN_AFTER_MS (2 menit)
+ *   add-in tidak terlihat lagi    → mati bersama PC-nya; STUCK_AFTER_MS
+ *
+ * Baris kedua justru lebih CEPAT dari sebelumnya: add-in yang di-restart
+ * ketahuan dalam dua menit, bukan lima belas, karena `busy` sudah mencakup job
+ * yang masih menunggu di antrean internalnya.
+ */
+interface RunningLimit {
+  ms: number;
+  /** Masuk ke kolom `error` — dibaca manusia yang menengok database. */
+  reason: string;
+  /**
+   * Kunci katalog untuk pesan ke chat.
+   *
+   * Dibawa sebagai KUNCI, bukan disimpulkan dari `ms`. Menyimpulkannya berarti
+   * membandingkan angka untuk mencari tahu maksud — dan begitu ada ambang ketiga
+   * yang nilainya kebetulan sama, user menerima kalimat dari cabang yang salah
+   * tanpa satu pun test yang berubah warna.
+   */
+  message: 'errors.stuck' | 'errors.tooLong';
+}
+
+async function runningLimit(ctx: SweepContext): Promise<RunningLimit> {
+  if (ctx.addinBusy === true) {
+    return {
+      ms: MAX_RUNTIME_MS,
+      reason: 'add-in memegangnya terlalu lama',
+      message: 'errors.tooLong',
+    };
+  }
+  if (ctx.addinBusy === false) {
+    return {
+      ms: ORPHAN_AFTER_MS,
+      reason: 'add-in tidak mengakui job ini',
+      message: 'errors.stuck',
+    };
+  }
+
+  // Pemanggil tidak tahu keadaan add-in (jalur webhook). Heartbeat yang masih
+  // segar sudah cukup untuk TIDAK menyimpulkan job-nya mati: /claim jalan tiap 4
+  // detik dan akan memutuskannya dengan data yang benar.
+  const machine = await db.getMachine();
+  return isOnline(machine.last_seen_at)
+    ? { ms: MAX_RUNTIME_MS, reason: 'berjalan terlalu lama', message: 'errors.tooLong' }
+    : { ms: STUCK_AFTER_MS, reason: 'tidak ada laporan dari add-in', message: 'errors.stuck' };
+}
+
+export async function sweepAndNotify(ctx: SweepContext = {}): Promise<SweepReport> {
+  const limit = await runningLimit(ctx);
+
   const [expired, stuck] = await Promise.all([
     db.expireStale(),
-    db.reapStuckRunning(STUCK_AFTER_MS),
+    db.reapRunning(limit.ms, limit.reason),
   ]);
 
   await Promise.all([
     ...expired.map((job) => closeInChat(job, 'common.expired')),
-    ...stuck.map((job) => closeInChat(job, 'errors.stuck')),
+    // Job yang dibunuh batas ATAS bukan job yang terputus — Revit-nya masih
+    // hidup dan mungkin masih bekerja. Menyebutnya "Revit ditutup" akan
+    // mengirim orang memeriksa PC yang sebenarnya tidak apa-apa.
+    ...stuck.map((job) => closeInChat(job, limit.message)),
   ]);
 
   return { expired: expired.length, stuck: stuck.length };
 }
 
 /** Versi yang tidak pernah melempar — untuk dipanggil di jalur command user. */
-export async function sweepQuietly(): Promise<void> {
+export async function sweepQuietly(ctx: SweepContext = {}): Promise<void> {
   try {
-    await sweepAndNotify();
+    await sweepAndNotify(ctx);
   } catch (err) {
     // Menyapu adalah kerja latar. Kalau gagal, command user tetap harus jalan.
     console.error('[sweep]', err);

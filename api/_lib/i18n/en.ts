@@ -20,6 +20,9 @@ export const en = {
     elapsed: (p: Params) => `Took ${p.duration}`,
     position: (p: Params) => `Queue position ${p.pos} of ${p.total}`,
     empty: '(empty)',
+    // A result that arrived AFTER the server concluded the job was dead. Said
+    // plainly: the "cut off" message the user already read turned out to be wrong.
+    lateResult: '✅ Done (result arrived late — this job had been marked cut off)',
   },
 
   errors: {
@@ -49,6 +52,10 @@ export const en = {
       'so queueing it would achieve nothing. /help marks which commands already work.',
     stuck:
       '⚠️ Cut off mid-run — Revit was closed or the add-in stopped before the result was sent. Run the command again.',
+    // Different from `stuck`, and the difference matters: here Revit is still
+    // alive. Sending someone to check a PC that is fine only wastes their time.
+    tooLong:
+      '⏱️ Stopped for taking too long — Revit is still open, but this job did not finish within the time limit. Try a smaller group (/sheets --groups) instead of a whole discipline at once.',
     workerPaused:
       '⏸️ The worker is paused by an admin. Your command stays queued, but it only runs after /resume.',
     fileTooBig: (p: Params) =>
