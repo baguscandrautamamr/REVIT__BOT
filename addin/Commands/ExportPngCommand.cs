@@ -26,20 +26,27 @@ public sealed class ExportPngCommand : IBotCommand
     public ExecResult Run(Document doc, JsonElement payload)
     {
         var wanted = payload.Str("view");
-        if (string.IsNullOrWhiteSpace(wanted)) return ExecResult.Fail("Nama view belum disebutkan.");
+        var only3d = payload.Flag("only3d");
 
-        // Sheet ikut dicari: /png sering dipakai untuk sheet yang sama dengan
-        // /pdf, dan menolaknya hanya karena "itu sheet, bukan view" tidak
-        // menolong siapa pun.
-        View? view = ViewFinder.Sheet(doc, wanted);
-        view ??= ViewFinder.View(doc, wanted);
+        // Tanpa nama sama sekali: langsung daftarkan view 3D-nya. Itu jawaban
+        // yang lebih berguna daripada "nama view belum disebutkan" — nama-nama
+        // itu memang tidak bisa ditebak, dan hanya ada di browser tree Revit.
+        if (string.IsNullOrWhiteSpace(wanted)) return Choices(doc, null, only3d);
 
-        if (view is null)
+        var match = ViewFinder.FindForImage(doc, wanted, only3d);
+
+        if (match.Kind == MatchKind.Ambiguous)
         {
-            var names = ViewFinder.Sheets(doc).Select(s => $"{s.SheetNumber} — {s.Name}")
-                .Concat(ViewFinder.Printable(doc).Where(v => v is not ViewSheet).Select(v => v.Name));
-            return ExecResult.Fail($"View \"{wanted}\" tidak ditemukan.\n\nYang bisa dipakai:\n{ViewFinder.Suggest(names)}");
+            return ExecResult.Fail(
+                $"\"{wanted}\" cocok ke {match.Candidates.Count} view sekaligus, jadi tidak ditebak.\n\n" +
+                string.Join("\n", match.Candidates.Take(12).Select(n => "· " + n)) +
+                (match.Candidates.Count > 12 ? $"\n…dan {match.Candidates.Count - 12} lagi" : "") +
+                "\n\nSebut lebih lengkap, dalam tanda kutip:\n" +
+                $"/png \"{match.Candidates[0]}\"");
         }
+
+        var view = match.View;
+        if (view is null) return Choices(doc, wanted, only3d);
 
         if (!view.CanBePrinted)
             return ExecResult.Fail($"View \"{view.Name}\" tidak bisa diekspor jadi gambar (schedule/legend).");
@@ -73,5 +80,46 @@ public sealed class ExportPngCommand : IBotCommand
 
         var mb = file.Value.Bytes.Length / 1024.0 / 1024.0;
         return ExecResult.WithFile($"{view.Name}\n{WidthPixels} px · {mb:N1} MB", file.Value.Name, file.Value.Bytes);
+    }
+
+    /// <summary>
+    /// Apa saja yang bisa dipakai — dikelompokkan, dengan view 3D di paling atas.
+    ///
+    /// Urutannya bukan selera. Versi sebelumnya menumpuk semua nama jadi satu
+    /// daftar alfabetis lalu memotongnya di lima belas, dan di proyek nyata
+    /// seluruh jatah itu habis oleh drafting view bernama `**ACT STANDARDS**LINE
+    /// WEIGHTS 1-…` — namanya diawali `*`, jadi selalu menang urutan. Sembilan
+    /// view 3D yang justru dicari orangnya tidak muncul sekali pun, dan balasan
+    /// yang gunanya menghapus tebakan malah memaksanya.
+    /// </summary>
+    private static ExecResult Choices(Document doc, string? wanted, bool only3d)
+    {
+        var views3d = ViewFinder.Views3D(doc);
+
+        var head = wanted is null
+            ? "Sebutkan view yang mau digambar."
+            : $"View \"{wanted}\" tidak ditemukan.";
+
+        if (views3d.Count == 0 && only3d)
+            return ExecResult.Fail($"{head}\n\nModel ini tidak punya satu pun view 3D.");
+
+        var groups = only3d
+            ? new[] { ("View 3D", views3d.Select(v => v.Name)) }
+            : new[]
+            {
+                ("View 3D", views3d.Select(v => v.Name)),
+                ("Sheet", ViewFinder.Sheets(doc).Select(s => s.SheetNumber)),
+                ("View lain", ViewFinder.Printable(doc)
+                    .Where(v => v is not ViewSheet and not View3D)
+                    .Select(v => v.Name)),
+            };
+
+        var example = views3d.Count > 0 ? views3d[0].Name : "NAMA VIEW";
+
+        return ExecResult.Fail(
+            $"{head}\n\n{ViewFinder.SuggestGroups(10, groups)}\n\n" +
+            "Nama yang mengandung spasi HARUS dikutip:\n" +
+            $"/png \"{example}\"\n" +
+            "Cuma mau view 3D saja: /png --3d");
     }
 }

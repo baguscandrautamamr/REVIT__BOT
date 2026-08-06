@@ -112,7 +112,14 @@ export const COMMANDS: CommandSpec[] = [
       en: '/pdf LP-01 LP-02 · /pdf --series "GENERAL-LV"',
     },
   },
-  { name: 'png', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/png 3D-ELEC', en: '/png 3D-ELEC' } },
+  // Contoh usage-nya sengaja TIDAK menyebut nama view karangan. Versi
+  // sebelumnya menulis "/png 3D-ELEC" — nama yang tidak ada di model mana pun,
+  // saya karang sendiri — dan orang yang menyalinnya apa adanya dijawab "view
+  // tidak ditemukan" untuk kesalahan yang bukan miliknya.
+  {
+    name: 'png', role: 'viewer', section: 'export', inMenu: true, addin: true,
+    usage: { id: '/png · /png --3d', en: '/png · /png --3d' },
+  },
   { name: 'schedule', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/schedule PANEL-SCH', en: '/schedule PANEL-SCH' } },
   {
     name: 'dwg', role: 'admin', section: 'export', inMenu: false, addin: true,
@@ -162,7 +169,7 @@ export function parseCommand(text: string): { spec: CommandSpec | null; raw: str
  * satu tanda hubung tunggal dimaksudkan sebagai flag — lihat `flagName`.
  */
 export const KNOWN_FLAGS = new Set([
-  'series', 'disc', 'discipline', 'groups', 'grup', 'detail',
+  'series', 'disc', 'discipline', 'groups', 'grup', 'detail', '3d',
 ]);
 
 /**

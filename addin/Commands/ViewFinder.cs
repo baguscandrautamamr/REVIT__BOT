@@ -18,6 +18,14 @@ internal enum MatchKind
     Ambiguous,
 }
 
+internal readonly struct ViewMatch
+{
+    public MatchKind Kind { get; init; }
+    public View? View { get; init; }
+    /// <summary>Nama yang cocok sebagian — hanya berarti saat Ambiguous.</summary>
+    public List<string> Candidates { get; init; }
+}
+
 internal readonly struct SheetMatch
 {
     public MatchKind Kind { get; init; }
@@ -193,21 +201,73 @@ internal static class ViewFinder
         };
     }
 
+    /// <summary>View 3D yang bisa diekspor jadi gambar.</summary>
+    public static List<View3D> Views3D(Document doc) =>
+        new FilteredElementCollector(doc)
+            .OfClass(typeof(View3D))
+            .Cast<View3D>()
+            .Where(v => !v.IsTemplate && v.CanBePrinted)
+            .ToList();
+
     /// <summary>
-    /// View untuk /png. Aturan kecocokan sebagiannya sama dengan sheet: cocok
-    /// ke beberapa view berarti TIDAK ADA, bukan "ambil yang pertama".
+    /// Cari SATU view untuk diekspor jadi gambar.
+    ///
+    /// Dua hal yang diperbaiki dari versi sebelumnya, dan keduanya bukan kosmetik:
+    ///
+    /// 1. View 3D dicari LEBIH DULU. Yang diminta orang dari /png hampir selalu
+    ///    "coba lihat bentuknya", dan itu view 3D. Sebelumnya sheet dicari lebih
+    ///    dulu SAMPAI SELESAI — termasuk kecocokan sebagiannya — jadi sheet yang
+    ///    cuma mirip bisa mengalahkan view 3D yang namanya persis.
+    ///
+    /// 2. Cocok ke banyak view dibedakan dari tidak ada sama sekali. Sebelumnya
+    ///    keduanya sama-sama mengembalikan null, dan pemanggilnya menjawab "tidak
+    ///    ditemukan" untuk nama yang sebenarnya ditemukan — tiga kali. Orangnya
+    ///    lalu mencari nama yang salah ketik, padahal yang perlu ia lakukan cuma
+    ///    menyebutkan lebih lengkap.
     /// </summary>
-    public static View? View(Document doc, string wanted)
+    public static ViewMatch FindForImage(Document doc, string wanted, bool only3d)
     {
-        var views = Printable(doc);
-        var exact = views.FirstOrDefault(v => Eq(v.Name, wanted));
-        if (exact is not null) return exact;
+        var pool = new List<View>();
+        var seen = new HashSet<ElementId>();
 
-        if (wanted.Length < MinLooseLength) return null;
+        void Add(IEnumerable<View> views)
+        {
+            foreach (var v in views) if (seen.Add(v.Id)) pool.Add(v);
+        }
 
-        var loose = views.Where(v => Has(v.Name, wanted)).ToList();
-        return loose.Count == 1 ? loose[0] : null;
+        Add(Views3D(doc));
+        if (!only3d)
+        {
+            Add(Sheets(doc));
+            Add(Printable(doc));
+        }
+
+        var exact = pool.FirstOrDefault(v => ExactFor(v, wanted));
+        if (exact is not null) return new ViewMatch { Kind = MatchKind.Exact, View = exact };
+
+        if (wanted.Length < MinLooseLength) return new ViewMatch { Kind = MatchKind.None };
+
+        var loose = pool.Where(v => HasFor(v, wanted)).ToList();
+        return loose.Count switch
+        {
+            0 => new ViewMatch { Kind = MatchKind.None },
+            1 => new ViewMatch { Kind = MatchKind.Loose, View = loose[0] },
+            _ => new ViewMatch
+            {
+                Kind = MatchKind.Ambiguous,
+                Candidates = loose.Select(Label).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList(),
+            },
+        };
     }
+
+    /// <summary>Nama yang bisa diketik ulang orang untuk menunjuk view ini.</summary>
+    public static string Label(View v) => v is ViewSheet s ? s.SheetNumber : v.Name;
+
+    private static bool ExactFor(View v, string wanted) =>
+        Eq(v.Name, wanted) || (v is ViewSheet s && Eq(s.SheetNumber, wanted));
+
+    private static bool HasFor(View v, string wanted) =>
+        Has(v.Name, wanted) || (v is ViewSheet s && Has(s.SheetNumber, wanted));
 
     /// <summary>
     /// Daftar nama untuk ditempel di pesan "tidak ditemukan".
@@ -221,6 +281,48 @@ internal static class ViewFinder
         var shown = list.Take(max).Select(n => "· " + n);
         var extra = list.Count > max ? $"\n…dan {list.Count - max} lainnya" : "";
         return string.Join("\n", shown) + extra;
+    }
+
+    /// <summary>
+    /// Saran yang DIKELOMPOKKAN, dengan jatah untuk tiap kelompok.
+    ///
+    /// <see cref="Suggest"/> mengurutkan alfabetis lalu memotong. Itu tampak
+    /// tidak berbahaya sampai satu kelompok memborong seluruh jatahnya:
+    ///
+    ///   /png 3D-ELEC → "Yang bisa dipakai:"
+    ///     · **ACT STANDARDS**HATCH
+    ///     · **ACT STANDARDS**LINE WEIGHTS 1-1
+    ///     · **ACT STANDARDS**LINE WEIGHTS 1-10
+    ///     …dua belas baris lagi yang sama
+    ///
+    /// Nama-nama itu diawali `*`, yang urutannya SEBELUM huruf — jadi lima belas
+    /// slotnya habis oleh drafting view contoh ketebalan garis, dan sembilan view
+    /// 3D yang justru dicari orangnya tidak pernah muncul sekali pun. Daftar yang
+    /// gunanya menghapus tebakan malah memaksanya.
+    ///
+    /// Di sini tiap kelompok punya jatahnya sendiri dan jumlah aslinya selalu
+    /// disebut, jadi tidak ada kelompok yang bisa menghapus kelompok lain.
+    /// </summary>
+    public static string SuggestGroups(int perGroup, params (string Label, IEnumerable<string> Names)[] groups)
+    {
+        var blocks = new List<string>();
+
+        foreach (var (label, names) in groups)
+        {
+            var list = names.Where(n => !string.IsNullOrWhiteSpace(n))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+            if (list.Count == 0) continue;
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"{label} ({list.Count}):");
+            foreach (var name in list.Take(perGroup)) sb.AppendLine("· " + name);
+            if (list.Count > perGroup) sb.AppendLine($"…dan {list.Count - perGroup} lagi");
+            blocks.Add(sb.ToString().TrimEnd());
+        }
+
+        return string.Join("\n\n", blocks);
     }
 
     private static void Add(List<ViewSheet> into, ViewSheet sheet)

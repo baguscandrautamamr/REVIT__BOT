@@ -738,6 +738,24 @@ async function main() {
       (seriesDetail?.payload as Record<string, unknown>)?.detail === true,
       JSON.stringify(seriesDetail?.payload));
 
+    // /png tanpa argumen BUKAN kesalahan: nama view 3D tidak bisa ditebak dan
+    // hanya tertulis di browser tree Revit, jadi yang dibutuhkan orangnya adalah
+    // daftarnya — bukan balasan "argumen kurang".
+    const pngBare = await typed('/png', 12);
+    check('/png tanpa argumen tetap diantre, bukan ditolak server',
+      pngBare !== undefined && (pngBare.payload as Record<string, unknown>)?.view === null,
+      JSON.stringify(pngBare?.payload));
+
+    const png3d = await typed('/png —3d', 13);
+    check('--3d membatasi pencarian ke View3D, lewat em dash sekalipun',
+      (png3d?.payload as Record<string, unknown>)?.only3d === true,
+      JSON.stringify(png3d?.payload));
+
+    const pngNamed = await typed('/png "E-LIGHTING FIXTURES"', 14);
+    check('nama view berspasi tetap utuh sebagai satu nama',
+      (pngNamed?.payload as Record<string, unknown>)?.view === 'E-LIGHTING FIXTURES',
+      JSON.stringify(pngNamed?.payload));
+
     // Yang TIDAK boleh berubah: tanda hubung ada di hampir setiap nomor sheet,
     // jadi nomor sheet tidak boleh ikut terbaca sebagai flag.
     const sheetish = await typed('/pdf -EP-1101 ME-F-EL-0000', 8);

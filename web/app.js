@@ -35,7 +35,7 @@ const COMMANDS = [
   { section: 'query',  name: 'find',     role: 'viewer', arg: 'MARK-123' },
   { section: 'query',  name: 'load',     role: 'viewer', arg: 'L1' },
   { section: 'export', name: 'pdf',      role: 'viewer', arg: 'LP-01' },
-  { section: 'export', name: 'png',      role: 'viewer', arg: '3D-ELEC' },
+  { section: 'export', name: 'png',      role: 'viewer' },
   { section: 'export', name: 'schedule', role: 'viewer', arg: 'PANEL-SCH' },
   { section: 'export', name: 'dwg',      role: 'admin',  arg: 'E-101' },
   { section: 'export', name: 'nwc',      role: 'admin' },

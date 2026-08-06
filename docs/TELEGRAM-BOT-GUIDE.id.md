@@ -321,7 +321,7 @@ Sekuriti       → OST_SecurityDevices
 | Command | Role | Contoh | Catatan |
 |---|---|---|---|
 | `/pdf` | viewer (maks 10 sheet) | `/pdf LP-01 LP-02` | Skala presisi 1:1 — setelan wajibnya di §10 |
-| `/png` | viewer | `/png 3D-ELEC` | Cepat, cocok untuk progress check |
+| `/png` | viewer | `/png` · `/png --3d` · `/png "E-LIGHTING FIXTURES"` | Cepat, cocok untuk progress check. Tanpa argumen = daftar view 3D yang ada; `--3d` membatasi pencarian ke View3D saja |
 | `/schedule` | viewer | `/schedule PANEL-SCH` | CSV dari `ViewSchedule.Export()` |
 | `/dwg` | admin | `/dwg E-101` | Memakai export setup yang tersimpan di model |
 | `/nwc` | admin | `/nwc` | Untuk Navisworks |

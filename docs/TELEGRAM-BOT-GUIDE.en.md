@@ -320,7 +320,7 @@ Security       → OST_SecurityDevices
 | Command | Role | Example | Notes |
 |---|---|---|---|
 | `/pdf` | viewer (max 10 sheets) | `/pdf LP-01 LP-02` | True 1:1 scale — required settings in §10 |
-| `/png` | viewer | `/png 3D-ELEC` | Fast, good for a progress check |
+| `/png` | viewer | `/png` · `/png --3d` · `/png "E-LIGHTING FIXTURES"` | Fast, good for a progress check. No argument = list the 3D views; `--3d` restricts the search to View3D only |
 | `/schedule` | viewer | `/schedule PANEL-SCH` | CSV via `ViewSchedule.Export()` |
 | `/dwg` | admin | `/dwg E-101` | Uses the export setup saved in the model |
 | `/nwc` | admin | `/nwc` | For Navisworks |
