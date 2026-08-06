@@ -81,8 +81,24 @@ const syncTheme = wireSegment(
 
 /* ── Data status ───────────────────────────────────────────────────────── */
 let state = null;
-let failed = false;
 let users = null;
+
+/**
+ * Sebab kegagalan terakhir, atau null kalau status berhasil dimuat.
+ *
+ * Dulu ini cuma boolean, dan panel selalu menulis kalimat yang sama: "Gagal
+ * memuat status". Padahal penyebabnya berbeda-beda dan penanganannya juga —
+ * panel yang dibuka di tab browser biasa (tanpa initData) terlihat persis sama
+ * dengan Supabase yang mati, dan orang mencari di tempat yang salah.
+ */
+let problem = null;
+
+/** Sebab yang tidak akan pulih sendiri: berhenti memanggil API tiap 15 detik. */
+const TERMINAL = new Set(['noTelegram', 'expired', 'badSession', 'notRegistered']);
+
+let poll = null;
+function startPolling() { poll ??= setInterval(load, 15000); }
+function stopPolling() { clearInterval(poll); poll = null; }
 
 // initData dikirim apa adanya; server yang memverifikasi HMAC-nya.
 // Jangan pernah percaya `initDataUnsafe` untuk otorisasi.
@@ -94,16 +110,52 @@ function authHeaders(extra) {
 }
 
 async function load() {
+  // Tanpa initData, /api/panel/state PASTI menjawab 401 — jadi jangan repot
+  // memanggilnya. Dijawab di sini supaya pesannya menyebut sebabnya.
+  if (!tg?.initData) {
+    state = null;
+    problem = 'noTelegram';
+    stopPolling();
+    render();
+    return;
+  }
+
   try {
     const res = await fetch('/api/panel/state', { headers: authHeaders() });
-    if (!res.ok) throw new Error(String(res.status));
-    state = await res.json();
-    failed = false;
+    if (res.ok) {
+      state = await res.json();
+      problem = null;
+    } else {
+      const body = await res.json().catch(() => ({}));
+      problem = diagnose(res.status, body);
+      if (TERMINAL.has(problem)) state = null;
+    }
   } catch {
-    failed = true;
+    problem = 'load';
   }
+
+  // Gangguan jaringan atau server pulih sendiri, jadi polling tetap jalan.
+  // Sesi yang tidak sah tidak akan pulih tanpa membuka ulang panel.
+  if (problem && TERMINAL.has(problem)) stopPolling();
+  else startPolling();
+
   if (state?.role === 'admin') await loadUsers();
   render();
+}
+
+/**
+ * Kode status + isi balasan → sebab yang bisa dibaca orang.
+ * `reason` datang dari `verifyInitData` di server; lihat api/_lib/telegram.ts.
+ */
+function diagnose(status, body) {
+  if (status === 401) {
+    if (body.reason === 'stale') return 'expired';
+    if (body.reason === 'empty' || body.reason === 'no hash') return 'noTelegram';
+    return 'badSession';
+  }
+  if (status === 403) return 'notRegistered';
+  if (status >= 500) return 'server';
+  return 'load';
 }
 
 async function loadUsers() {
@@ -127,16 +179,36 @@ function render() {
   renderUsers();
 }
 
+/** Sebab kegagalan → kunci penjelasannya di katalog panel. */
+const PROBLEM_HINT = {
+  noTelegram: 'err.noTelegram',
+  expired: 'err.expired',
+  badSession: 'err.badSession',
+  notRegistered: 'err.notRegistered',
+  server: 'err.server',
+  load: 'err.loadHint',
+};
+
 function renderStatus() {
   const dot = document.getElementById('status-dot');
   const title = document.getElementById('status-title');
+  const hint = document.getElementById('status-hint');
 
-  if (failed || !state) {
+  if (problem || !state) {
     dot.className = 'dot dot--warn';
-    title.textContent = failed ? i18n.t('err.load') : '…';
+    title.textContent = problem ? i18n.t('err.load') : '…';
+    hint.textContent = problem ? i18n.t(PROBLEM_HINT[problem] ?? 'err.loadHint') : '';
+    hint.hidden = !problem;
+
+    // Nilai lama harus ikut dikosongkan. Angka yang bertahan di layar saat
+    // status gagal dimuat terbaca sebagai angka yang masih berlaku.
+    for (const id of ['kv-model', 'kv-seen', 'kv-revit', 'kv-addin']) {
+      document.getElementById(id).textContent = '—';
+    }
     return;
   }
 
+  hint.hidden = true;
   const online = state.online === true;
   dot.className = `dot ${online ? (state.isPaused ? 'dot--warn' : 'dot--ok') : 'dot--err'}`;
   title.textContent = online
@@ -251,7 +323,12 @@ function renderUsers() {
     return li;
   }));
 
-  document.getElementById('users-empty').hidden = rows.length > 0;
+  // `users === null` berarti daftarnya GAGAL dimuat, bukan kosong. Menampilkan
+  // "Belum ada user" di situ akan membuat admin mengira aksesnya benar-benar
+  // hilang dan menambahkan orang yang sebenarnya sudah terdaftar.
+  const empty = document.getElementById('users-empty');
+  empty.textContent = users === null ? i18n.t('err.load') : i18n.t('users.empty');
+  empty.hidden = rows.length > 0;
 }
 
 /** Pesan error dari server → kalimat yang bisa dibaca, dalam bahasa aktif. */
@@ -350,5 +427,7 @@ document.getElementById('refresh').addEventListener('click', load);
 document.getElementById('user-form').addEventListener('submit', submitUser);
 theme.onThemeChange(() => syncTheme());
 render();
+// Polling dinyalakan/dimatikan oleh `load()` sendiri: memanggil API tiap 15
+// detik selama satu jam untuk selalu menerima 401 yang sama tidak menolong
+// siapa pun, dan panel yang dibuka di luar Telegram melakukan persis itu.
 load();
-setInterval(load, 15000);

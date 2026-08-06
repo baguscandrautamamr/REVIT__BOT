@@ -59,7 +59,21 @@ export const DICT = {
     'users.added': 'User disimpan',
     'users.revoked': 'Akses dicabut',
     'users.menuNote': 'Admin baru menerima menu command lengkap setelah /api/admin/setup dibuka lagi.',
-    'err.load': 'Gagal memuat status. Tarik untuk mencoba lagi.',
+    'err.load': 'Gagal memuat status.',
+    'err.loadHint': 'Server tidak bisa dihubungi. Cek koneksi, lalu tekan Muat ulang.',
+    'err.noTelegram':
+      'Panel ini harus dibuka DARI DALAM Telegram — lewat tombol Panel di sebelah kolom ketik, ' +
+      'atau perintah /panelapp. Dibuka langsung sebagai halaman web biasa, Telegram tidak ' +
+      'mengirimkan data login, jadi server tidak tahu kamu siapa dan menolak menampilkan status.',
+    'err.expired':
+      'Sesi panel sudah kedaluwarsa (berlaku 1 jam). Tutup panel ini, lalu buka lagi dari Telegram.',
+    'err.badSession':
+      'Data login dari Telegram tidak cocok dengan bot di server. Biasanya karena ' +
+      'TELEGRAM_BOT_TOKEN di Vercel milik bot yang berbeda dengan bot yang membuka panel ini.',
+    'err.notRegistered':
+      'Akun Telegram-mu belum terdaftar di bot ini. Kirim /status ke bot, lalu berikan chat ID ' +
+      'yang dibalas bot itu kepada admin.',
+    'err.server': 'Server sedang bermasalah. Coba lagi sebentar lagi.',
     'err.badChatId': 'Chat ID harus berupa angka.',
     'err.badName': 'Nama tidak boleh kosong.',
     'err.self': 'Kamu tidak bisa mencabut akses dirimu sendiri.',
@@ -113,7 +127,21 @@ export const DICT = {
     'users.added': 'User saved',
     'users.revoked': 'Access revoked',
     'users.menuNote': 'A new admin gets the full command menu once /api/admin/setup is opened again.',
-    'err.load': 'Could not load status. Pull to retry.',
+    'err.load': 'Could not load status.',
+    'err.loadHint': 'The server could not be reached. Check your connection, then hit Refresh.',
+    'err.noTelegram':
+      'This panel has to be opened FROM INSIDE Telegram — via the Panel button next to the ' +
+      'message box, or the /panelapp command. Opened as a plain web page, Telegram sends no ' +
+      'login data, so the server cannot tell who you are and refuses to show the status.',
+    'err.expired':
+      'This panel session has expired (it lasts 1 hour). Close the panel and open it again from Telegram.',
+    'err.badSession':
+      'The login data from Telegram does not match the bot on the server. Usually this means ' +
+      'TELEGRAM_BOT_TOKEN on Vercel belongs to a different bot than the one that opened this panel.',
+    'err.notRegistered':
+      'Your Telegram account is not registered with this bot yet. Send /status to the bot, then ' +
+      'give the chat ID it replies with to an admin.',
+    'err.server': 'The server is having trouble. Try again shortly.',
     'err.badChatId': 'Chat ID must be a number.',
     'err.badName': 'Name cannot be empty.',
     'err.self': 'You cannot revoke your own access.',
