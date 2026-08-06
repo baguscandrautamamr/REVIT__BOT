@@ -101,10 +101,18 @@ Sheet di proyek nyata sudah dikelompokkan lewat parameter proyek — di sini
 atas pengelompokan itu, jadi tidak ada yang perlu mengetik 18 nomor sheet:
 
 ```bash
-/sheets --groups              # daftar grup + isinya + perintah siap salin
+/series                       # grup apa saja yang ada + perintah siap salin
+/series --detail              # sama, plus nomor & nama tiap sheet
 /pdf --series "GENERAL-LV"    # satu grup → SATU PDF, dinamai menurut grupnya
 /pdf --disc F_UTILITY         # seluruh discipline → satu PDF PER series, di-zip
 ```
+
+Mulai dari `/series`. Nama grup hanya tertulis di browser tree Revit — di PC —
+sementara yang meminta gambarnya sedang memegang HP; tanpa command itu, `--series`
+hanya bisa dipakai orang yang sudah duduk di depan Revit, yaitu justru orang yang
+tidak butuh bot. Ia juga muncul di menu `/` Telegram, jadi bisa DITEKAN: tidak ada
+tanda hubung yang bisa diubah autocorrect. Alias: `/seri`, `/grup`.
+`/sheets --groups` masih bekerja dan mendelegasi ke command yang sama.
 
 Dua hal yang menentukan di sini:
 

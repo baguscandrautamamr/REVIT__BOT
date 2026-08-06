@@ -62,6 +62,16 @@ export const COMMANDS: CommandSpec[] = [
     aliases: { id: ['lembar'] },
     usage: { id: '/sheets · /sheets --groups', en: '/sheets · /sheets --groups' },
   },
+  // Command sendiri, bukan flag `/sheets --groups`.
+  //
+  // Nama grup hanya tertulis di browser tree Revit — di PC — sementara yang
+  // meminta gambarnya sedang memegang HP. Dan yang muncul di menu "/" Telegram
+  // bisa DITEKAN, jadi tidak ada tanda hubung yang bisa diubah autocorrect.
+  {
+    name: 'series', role: 'viewer', section: 'info', inMenu: true, addin: true,
+    aliases: { id: ['seri', 'grup'] },
+    usage: { id: '/series · /series D_FINISHED GOOD WAREHOUSE', en: '/series · /series D_FINISHED GOOD WAREHOUSE' },
+  },
   { name: 'warnings', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['peringatan'] } },
   { name: 'queue', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['antrean', 'antrian'] } },
   // `/start` dikirim otomatis oleh tombol START Telegram saat chat pertama

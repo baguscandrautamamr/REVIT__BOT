@@ -720,6 +720,24 @@ async function main() {
       (one?.payload as Record<string, unknown>)?.series === 'GROUNDING',
       JSON.stringify(one?.payload));
 
+    // /series ada supaya nama grup bisa diketahui tanpa membuka Revit, dan
+    // supaya tidak ada tanda hubung yang perlu diketik benar sama sekali —
+    // command di menu "/" Telegram bisa ditekan.
+    const series = await typed('/series', 9);
+    check('/series meminta daftar grup, tanpa flag apa pun',
+      (series?.payload as Record<string, unknown>)?.groups === true,
+      JSON.stringify(series?.payload));
+
+    const seriesFiltered = await typed('/seri D_FINISHED GOOD WAREHOUSE', 10);
+    check('alias /seri + saringan discipline bernama panjang',
+      (seriesFiltered?.payload as Record<string, unknown>)?.filter === 'D_FINISHED GOOD WAREHOUSE',
+      JSON.stringify(seriesFiltered?.payload));
+
+    const seriesDetail = await typed('/grup —detail', 11);
+    check('alias /grup, dan --detail lewat em dash juga',
+      (seriesDetail?.payload as Record<string, unknown>)?.detail === true,
+      JSON.stringify(seriesDetail?.payload));
+
     // Yang TIDAK boleh berubah: tanda hubung ada di hampir setiap nomor sheet,
     // jadi nomor sheet tidak boleh ikut terbaca sebagai flag.
     const sheetish = await typed('/pdf -EP-1101 ME-F-EL-0000', 8);

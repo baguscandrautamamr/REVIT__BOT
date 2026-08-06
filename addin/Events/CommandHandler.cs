@@ -24,6 +24,7 @@ public sealed class CommandHandler : IExternalEventHandler
         {
             new LevelsCommand(),
             new SheetsCommand(),
+            new SeriesCommand(),
             new WarningsCommand(),
             new CountByLevelCommand(),
             new TrayCommand(),

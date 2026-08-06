@@ -341,6 +341,11 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
     case 'ifc':
       return { payload: {} };
 
+    // Argumennya, kalau ada, menyaring per discipline: `/series F_UTILITY`.
+    // `--detail` menambahkan nomor + nama tiap sheet di dalam grupnya.
+    case 'series':
+      return { payload: { groups: true, filter: joined || null, detail: flags.includes('detail') } };
+
     // `--groups` mendaftar grup ACT SHEET SERIES, bukan sheet satu per satu.
     // Nilai di belakangnya, kalau ada, menyaring per discipline.
     case 'sheets':
