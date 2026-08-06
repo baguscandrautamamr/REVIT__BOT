@@ -60,12 +60,35 @@ export interface SweepContext {
  * ketahuan dalam dua menit, bukan lima belas, karena `busy` sudah mencakup job
  * yang masih menunggu di antrean internalnya.
  */
-async function runningLimit(ctx: SweepContext): Promise<{ ms: number; reason: string }> {
+interface RunningLimit {
+  ms: number;
+  /** Masuk ke kolom `error` — dibaca manusia yang menengok database. */
+  reason: string;
+  /**
+   * Kunci katalog untuk pesan ke chat.
+   *
+   * Dibawa sebagai KUNCI, bukan disimpulkan dari `ms`. Menyimpulkannya berarti
+   * membandingkan angka untuk mencari tahu maksud — dan begitu ada ambang ketiga
+   * yang nilainya kebetulan sama, user menerima kalimat dari cabang yang salah
+   * tanpa satu pun test yang berubah warna.
+   */
+  message: 'errors.stuck' | 'errors.tooLong';
+}
+
+async function runningLimit(ctx: SweepContext): Promise<RunningLimit> {
   if (ctx.addinBusy === true) {
-    return { ms: MAX_RUNTIME_MS, reason: 'add-in memegangnya terlalu lama' };
+    return {
+      ms: MAX_RUNTIME_MS,
+      reason: 'add-in memegangnya terlalu lama',
+      message: 'errors.tooLong',
+    };
   }
   if (ctx.addinBusy === false) {
-    return { ms: ORPHAN_AFTER_MS, reason: 'add-in tidak mengakui job ini' };
+    return {
+      ms: ORPHAN_AFTER_MS,
+      reason: 'add-in tidak mengakui job ini',
+      message: 'errors.stuck',
+    };
   }
 
   // Pemanggil tidak tahu keadaan add-in (jalur webhook). Heartbeat yang masih
@@ -73,8 +96,8 @@ async function runningLimit(ctx: SweepContext): Promise<{ ms: number; reason: st
   // detik dan akan memutuskannya dengan data yang benar.
   const machine = await db.getMachine();
   return isOnline(machine.last_seen_at)
-    ? { ms: MAX_RUNTIME_MS, reason: 'berjalan terlalu lama' }
-    : { ms: STUCK_AFTER_MS, reason: 'tidak ada laporan dari add-in' };
+    ? { ms: MAX_RUNTIME_MS, reason: 'berjalan terlalu lama', message: 'errors.tooLong' }
+    : { ms: STUCK_AFTER_MS, reason: 'tidak ada laporan dari add-in', message: 'errors.stuck' };
 }
 
 export async function sweepAndNotify(ctx: SweepContext = {}): Promise<SweepReport> {
@@ -90,9 +113,7 @@ export async function sweepAndNotify(ctx: SweepContext = {}): Promise<SweepRepor
     // Job yang dibunuh batas ATAS bukan job yang terputus — Revit-nya masih
     // hidup dan mungkin masih bekerja. Menyebutnya "Revit ditutup" akan
     // mengirim orang memeriksa PC yang sebenarnya tidak apa-apa.
-    ...stuck.map((job) =>
-      closeInChat(job, limit.ms === MAX_RUNTIME_MS ? 'errors.tooLong' : 'errors.stuck'),
-    ),
+    ...stuck.map((job) => closeInChat(job, limit.message)),
   ]);
 
   return { expired: expired.length, stuck: stuck.length };
