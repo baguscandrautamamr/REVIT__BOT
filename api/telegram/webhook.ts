@@ -15,7 +15,15 @@ import * as db from '../_lib/db';
 import { ENV } from '../_lib/env';
 import { resolveLocale, translator, type Locale } from '../_lib/i18n';
 import { HEAVY, LIMITS, cooldownRemaining, isOnline } from '../_lib/limits';
-import { helpText, queueText, statusText, usersText } from '../_lib/reply';
+import {
+  absoluteTime,
+  helpText,
+  queueText,
+  relativeTime,
+  statusText,
+  usersText,
+} from '../_lib/reply';
+import { closeInChat, sweepQuietly } from '../_lib/sweep';
 import {
   answerCallbackQuery,
   chunk,
@@ -69,7 +77,10 @@ async function onMessage(msg: any, updateId: number): Promise<void> {
   // Dedupe: retry Telegram membawa update_id yang sama.
   if (!(await claimUpdate(updateId))) return;
 
-  const user = await db.getUser(chatId);
+  // Sapu job mati di sini juga, bukan hanya di /claim. Kalau PC-nya justru
+  // yang mati, /claim tidak pernah dipanggil — dan tanpa ini pesan "⏳" milik
+  // orang lain menggantung sampai ada yang membuka Revit lagi.
+  const [user] = await Promise.all([db.getUser(chatId), sweepQuietly()]);
   const locale = resolveLocale(user?.lang, tgLang);
   const t = translator(locale);
 
@@ -189,7 +200,15 @@ async function serverSide(
         await sendMessage(chatId, mdv2(t('admin.notCancellable')));
         return;
       }
-      await db.cancelCommand(job.id);
+      const cancelled = await db.cancelCommand(job.id);
+      if (!cancelled) {
+        // Job keburu diambil add-in di antara pencarian dan pembatalan.
+        await sendMessage(chatId, mdv2(t('admin.notCancellable')));
+        return;
+      }
+      // Yang membatalkan adalah admin, tapi yang menunggu "⏳" adalah pemilik
+      // job. Tanpa baris ini, pesannya menggantung selamanya di chat orang lain.
+      await closeInChat(cancelled, 'common.cancelled');
       await sendMessage(chatId, mdv2(t('admin.cancelled', { id: job.id.slice(0, 8) })));
       return;
     }
@@ -240,14 +259,18 @@ async function enqueue(
 
   // Pesan "⏳" disimpan message_id-nya supaya nanti di-EDIT, bukan ditimpa
   // pesan baru — riwayat chat tetap satu baris per perintah.
-  const head = isOnline(machine.last_seen_at)
-    ? t('common.queued')
-    : t('errors.pcOffline', {
-        since: machine.last_seen_at
-          ? new Date(machine.last_seen_at).toLocaleString(locale === 'id' ? 'id-ID' : 'en-GB')
-          : '—',
-        ago: '—',
-      });
+  //
+  // Urutan pemeriksaannya penting: worker yang di-pause TIDAK mengambil job
+  // walaupun PC-nya online, jadi "⏳ masuk antrean" saja akan terbaca sebagai
+  // "sebentar lagi jalan" padahal tidak akan pernah — sampai ada yang /resume.
+  const head = machine.is_paused
+    ? t('errors.workerPaused')
+    : isOnline(machine.last_seen_at)
+      ? t('common.queued')
+      : t('errors.pcOffline', {
+          since: machine.last_seen_at ? absoluteTime(machine.last_seen_at, locale) : '—',
+          ago: relativeTime(machine.last_seen_at, locale),
+        });
 
   const sent = await sendMessage(chatId, mdv2(`${head}\n#${job.id.slice(0, 8)} /${spec.name}`));
   await db.setCommandMessageId(job.id, sent.message_id);

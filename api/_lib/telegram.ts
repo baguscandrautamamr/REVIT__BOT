@@ -30,11 +30,50 @@ export function chunk(text: string, limit = MAX_TEXT): string[] {
   if (text.length <= limit) return [text];
   const out: string[] = [];
   let buf = '';
+
   for (const line of text.split('\n')) {
-    if (buf.length + line.length + 1 > limit) { out.push(buf); buf = ''; }
+    if (buf && buf.length + line.length + 1 > limit) { out.push(buf); buf = ''; }
+
+    // Satu baris yang sendirian sudah melebihi batas tidak bisa diselamatkan
+    // oleh pemotongan per baris. Tanpa penanganan di sini ia diloloskan apa
+    // adanya dan Telegram menolak SELURUH pesan dengan 400 — satu nama sheet
+    // yang kepanjangan cukup untuk membuat /help gagal total.
+    if (line.length > limit) {
+      for (const piece of hardSplit(line, limit)) {
+        if (buf) { out.push(buf); buf = ''; }
+        out.push(piece);
+      }
+      continue;
+    }
+
     buf += (buf ? '\n' : '') + line;
   }
+
   if (buf) out.push(buf);
+  return out;
+}
+
+/**
+ * Pecah paksa satu baris panjang, tanpa pernah memisahkan `\` dari karakter
+ * yang di-escape-nya: `mdv2()` menghasilkan pasangan seperti `\.` dan `\-`,
+ * dan potongan yang berakhir dengan backslash menggantung membuat Telegram
+ * menolak potongan itu sekaligus yang berikutnya.
+ */
+function hardSplit(line: string, limit: number): string[] {
+  const out: string[] = [];
+  let rest = line;
+
+  while (rest.length > limit) {
+    let cut = limit;
+    let backslashes = 0;
+    while (cut - 1 - backslashes >= 0 && rest[cut - 1 - backslashes] === '\\') backslashes++;
+    if (backslashes % 2 === 1) cut--; // jangan tinggalkan backslash menggantung
+
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(cut);
+  }
+
+  if (rest) out.push(rest);
   return out;
 }
 

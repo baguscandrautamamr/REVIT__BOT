@@ -56,9 +56,9 @@ export function statusText(
   lines.push(
     mdv2(
       online
-        ? t('status.online', { ago: relative(machine.last_seen_at!, locale) })
+        ? t('status.online', { ago: relativeTime(machine.last_seen_at, locale) })
         : t('status.offline', {
-            since: machine.last_seen_at ? absolute(machine.last_seen_at, locale) : '—',
+            since: machine.last_seen_at ? absoluteTime(machine.last_seen_at, locale) : '—',
           }),
     ),
   );
@@ -122,7 +122,9 @@ export function resultText(result: Record<string, unknown> | null): string {
   return code(text);
 }
 
-function relative(iso: string, locale: Locale): string {
+/** "3 menit lalu". `null` → em dash, supaya pemanggil tidak perlu menjaga itu. */
+export function relativeTime(iso: string | null, locale: Locale): string {
+  if (!iso) return '—';
   const diffSec = Math.round((new Date(iso).getTime() - Date.now()) / 1000);
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
   const abs = Math.abs(diffSec);
@@ -132,7 +134,7 @@ function relative(iso: string, locale: Locale): string {
   return rtf.format(Math.round(diffSec / 86400), 'day');
 }
 
-function absolute(iso: string, locale: Locale): string {
+export function absoluteTime(iso: string, locale: Locale): string {
   return new Intl.DateTimeFormat(locale === 'id' ? 'id-ID' : 'en-GB', {
     dateStyle: 'medium',
     timeStyle: 'short',

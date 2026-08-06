@@ -464,12 +464,24 @@ Yang paling mungkin butuh penyesuaian saat build pertama:
   `RevitAPI.chm`, jangan menebak.
 - `ViewSheet.GetAllRevisionIds()` — pastikan urutannya memang kronologis di
   versi 2025.
+- Properti `ViewScheduleExportOptions` (`ColumnHeaders`, `HeadersFootersBlanks`)
+  — sama seperti di atas, cocokkan dengan `RevitAPI.chm`.
 - Versi `System.Text.Json` bisa bentrok dengan yang sudah dimuat Revit. Kalau
   itu terjadi, hapus `PackageReference`-nya — .NET 8 sudah membawa
   `System.Text.Json` di runtime.
 
-Empat command sudah ada: `/levels`, `/sheets`, `/count`, `/pdf`. Sisanya
-(`/tray`, `/panel`, `/find`, `/load`, `/png`, `/schedule`, `/warnings`) tinggal
-menambah satu berkas di `addin/Commands/` dan mendaftarkannya di
-`CommandHandler`. Server-nya sudah siap menerima semuanya — command yang belum
-ada di add-in dijawab "belum diimplementasi", bukan menggantung.
+Delapan command sudah ada: `/levels`, `/sheets`, `/warnings`, `/count`,
+`/tray`, `/find`, `/pdf`, `/schedule`. Sisanya tinggal menambah satu berkas di
+`addin/Commands/` dan mendaftarkannya di `CommandHandler` — alasan masing-masing
+belum dikerjakan ada di tabel README. Server-nya sudah siap menerima semuanya:
+command yang belum ada di add-in dijawab "belum diimplementasi", bukan
+menggantung.
+
+Yang perlu dicek di modelmu sendiri, karena tidak ada cara menebaknya dari luar:
+
+- `CountByLevelCommand.Categories` — banyak family fire alarm sebenarnya
+  ter-load sebagai Electrical Fixtures. Kategori yang meleset melaporkan 0
+  tanpa terlihat salah.
+- `TrayCommand.GroupKeyOf` — mengelompokkan cable tray dari parameter Comments.
+  Kalau jenis tray di modelmu ditulis di parameter lain, itu satu-satunya
+  tempat yang perlu diubah.

@@ -7,8 +7,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "check:i18n": "tsx scripts/check-i18n.ts",
+    "check:commands": "tsx scripts/check-commands.ts",
     "set-commands": "tsx scripts/set-commands.ts",
-    "check": "npm run typecheck && npm run check:i18n"
+    "check": "npm run typecheck && npm run check:i18n && npm run check:commands"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
