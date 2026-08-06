@@ -7,6 +7,7 @@
  * TIDAK BOLEH diimpor oleh apa pun yang berjalan di browser.
  */
 import { ENV } from './env';
+import { startOfLocalDay } from './limits';
 
 export type Role = 'viewer' | 'admin';
 export type LangPref = 'auto' | 'id' | 'en';
@@ -182,19 +183,56 @@ export async function findPendingByPrefix(prefix: string): Promise<CommandRow | 
   return rows.find((r) => r.id.startsWith(prefix.toLowerCase())) ?? null;
 }
 
-export async function cancelCommand(id: string): Promise<void> {
-  await rest(`commands?id=eq.${id}&status=eq.pending`, {
+/** Mengembalikan baris yang benar-benar dibatalkan — null kalau sudah telanjur jalan. */
+export async function cancelCommand(id: string): Promise<CommandRow | null> {
+  const rows = await rest<CommandRow[]>(`commands?id=eq.${id}&status=eq.pending`, {
     method: 'PATCH',
+    headers: RETURNING,
     body: JSON.stringify({ status: 'cancelled', finished_at: new Date().toISOString() }),
   });
+  return rows[0] ?? null;
 }
 
-/** Tandai kedaluwarsa semua yang lewat `expires_at`. Dipanggil dari claim. */
-export async function expireStale(): Promise<void> {
-  await rest(`commands?status=eq.pending&expires_at=lt.${new Date().toISOString()}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ status: 'expired', finished_at: new Date().toISOString() }),
-  });
+/**
+ * Tandai kedaluwarsa semua yang lewat `expires_at`.
+ *
+ * Mengembalikan barisnya, bukan void: pemanggil WAJIB memberi tahu pemiliknya.
+ * Tanpa itu pesan "⏳" di chat tidak pernah berubah, dan menunggu selamanya
+ * tidak bisa dibedakan dari bot yang rusak.
+ */
+export async function expireStale(): Promise<CommandRow[]> {
+  return rest<CommandRow[]>(
+    `commands?status=eq.pending&expires_at=lt.${new Date().toISOString()}`,
+    {
+      method: 'PATCH',
+      headers: RETURNING,
+      body: JSON.stringify({ status: 'expired', finished_at: new Date().toISOString() }),
+    },
+  );
+}
+
+/**
+ * Job yang sudah `running` tapi tidak pernah dilaporkan — Revit ditutup di
+ * tengah jalan, add-in di-restart, atau PC mati.
+ *
+ * `expireStale` tidak menyentuh ini: ia hanya melihat `pending`. Tanpa penyapu
+ * kedua, satu crash Revit meninggalkan baris `running` selamanya — pesan "⏳"
+ * milik user tidak pernah selesai, dan /status melaporkan "1 jalan" terus.
+ */
+export async function reapStuckRunning(olderThanMs: number): Promise<CommandRow[]> {
+  const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+  return rest<CommandRow[]>(
+    `commands?status=eq.running&started_at=lt.${cutoff}`,
+    {
+      method: 'PATCH',
+      headers: RETURNING,
+      body: JSON.stringify({
+        status: 'failed',
+        error: 'stuck: tidak ada laporan dari add-in',
+        finished_at: new Date().toISOString(),
+      }),
+    },
+  );
 }
 
 export async function queueSnapshot(): Promise<{
@@ -202,8 +240,7 @@ export async function queueSnapshot(): Promise<{
   running: CommandRow[];
   doneToday: number;
 }> {
-  const midnight = new Date();
-  midnight.setUTCHours(0, 0, 0, 0);
+  const midnight = startOfLocalDay();
 
   const [pending, running, done] = await Promise.all([
     rest<CommandRow[]>('commands?status=eq.pending&order=created_at.asc&limit=20'),

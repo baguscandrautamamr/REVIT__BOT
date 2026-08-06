@@ -44,6 +44,10 @@ export const en = {
       `Level "${p.level}" not found. Send /levels for exact names.`,
     viewNotFound: (p: Params) => `Sheet/view "${p.view}" not found.`,
     revitError: (p: Params) => `Revit rejected it: ${p.message}`,
+    stuck:
+      '⚠️ Cut off mid-run — Revit was closed or the add-in stopped before the result was sent. Run the command again.',
+    workerPaused:
+      '⏸️ The worker is paused by an admin. Your command stays queued, but it only runs after /resume.',
     fileTooBig: (p: Params) =>
       `File is ${p.size} MB, over Telegram's 50 MB upload limit. Download link: ${p.url}`,
     internal: 'Internal error. It has been logged — try again shortly.',

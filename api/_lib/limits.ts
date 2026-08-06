@@ -28,3 +28,29 @@ export const ONLINE_WINDOW_MS = 30_000;
 export function isOnline(lastSeenAt: string | null): boolean {
   return !!lastSeenAt && Date.now() - new Date(lastSeenAt).getTime() < ONLINE_WINDOW_MS;
 }
+
+/**
+ * Job `running` yang belum melapor selewat ini dianggap mati.
+ *
+ * Lebih longgar dari `expires_at` (10 menit) karena job berat yang SEDANG
+ * dikerjakan memang boleh lama — yang dibunuh di sini hanya yang tidak akan
+ * pernah melapor lagi (Revit ditutup, add-in di-restart, PC mati).
+ */
+export const STUCK_AFTER_MS = 15 * 60 * 1000;
+
+/**
+ * Selisih zona waktu kantor terhadap UTC, dalam menit. Default +07:00 (WIB).
+ *
+ * Fungsi Vercel berjalan di UTC, jadi "hari ini" versi server berganti jam
+ * 07:00 WIB — hitungan "selesai hari ini" akan mereset di tengah pagi kerja
+ * dan terlihat seperti angka yang hilang.
+ */
+export const UTC_OFFSET_MINUTES = Number(process.env.UTC_OFFSET_MINUTES ?? 420);
+
+/** Tengah malam waktu kantor, dinyatakan sebagai Date absolut. */
+export function startOfLocalDay(now: Date = new Date()): Date {
+  const offsetMs = UTC_OFFSET_MINUTES * 60_000;
+  const shifted = new Date(now.getTime() + offsetMs);
+  shifted.setUTCHours(0, 0, 0, 0);
+  return new Date(shifted.getTime() - offsetMs);
+}

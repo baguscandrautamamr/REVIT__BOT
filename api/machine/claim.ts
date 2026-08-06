@@ -12,6 +12,7 @@ import crypto from 'node:crypto';
 
 import * as db from '../_lib/db';
 import { ENV } from '../_lib/env';
+import { sweepQuietly } from '../_lib/sweep';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
@@ -33,7 +34,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Bersihkan yang sudah lewat expires_at sebelum mengambil job baru,
     // supaya command basi tidak tiba-tiba jalan setelah Revit dibuka lagi.
-    await db.expireStale();
+    // Sekaligus menutup job `running` yang ditinggal mati — dan yang penting,
+    // memberi tahu pemiliknya, bukan cuma mengubah baris di database.
+    await sweepQuietly();
 
     const machine = await db.getMachine();
     if (machine.is_paused || !machine.bot_enabled) {

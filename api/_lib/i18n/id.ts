@@ -49,6 +49,10 @@ export const id = {
       `Level "${p.level}" tidak ditemukan. Ketik /levels untuk daftar nama persis.`,
     viewNotFound: (p: Params) => `Sheet/view "${p.view}" tidak ditemukan.`,
     revitError: (p: Params) => `Revit menolak: ${p.message}`,
+    stuck:
+      '⚠️ Terputus di tengah jalan — Revit ditutup atau add-in berhenti sebelum hasilnya dikirim. Jalankan ulang command-nya.',
+    workerPaused:
+      '⏸️ Worker sedang di-pause admin. Command tetap diantre, tapi baru dikerjakan setelah /resume.',
     fileTooBig: (p: Params) =>
       `File ${p.size} MB melebihi batas kirim Telegram (50 MB). Link unduh: ${p.url}`,
     internal: 'Ada kesalahan internal. Sudah dicatat, coba lagi sebentar.',
