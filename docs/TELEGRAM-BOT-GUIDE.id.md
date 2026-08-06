@@ -326,6 +326,36 @@ Sekuriti       → OST_SecurityDevices
 | `/nwc` | admin | `/nwc` | Untuk Navisworks |
 | `/ifc` | admin | `/ifc` | Lambat: 5–15 menit. Bot mengabari di awal |
 
+#### Bagaimana nama sheet dicocokkan
+
+`/pdf` dan `/dwg` memecah argumennya pada SPASI — satu kata, satu sheet. Jangan
+menambahkan kalimat di belakangnya:
+
+```
+/pdf ME-F-LP-1101                          ← benar
+/pdf ME-F-LP-1101 ME-F-SO-1101             ← benar, dua sheet
+/pdf "GROUND & FIRST FLOOR"                ← nama dengan spasi: pakai kutip
+/pdf ME-F-LP-1101 Export sheet ke PDF 1:1  ← setiap kata dibaca sebagai sheet
+```
+
+Urutan pencocokannya:
+
+1. Nomor sheet yang **persis** — ini yang selalu menang.
+2. Nama sheet yang **persis**.
+3. Cocok **sebagian**, minimal 3 huruf, dan hanya kalau **satu-satunya**. Cocok
+   ke beberapa sheet dijawab "ambigu", bukan ditebak — memilih diam-diam dari
+   beberapa berarti mengirim gambar kerja yang salah dengan yakin.
+4. Kalau ada kata yang sudah menyebut sheet dengan persis, kata lain yang cuma
+   mirip **tidak dipakai sama sekali**: begitu satu kata terbukti nomor sheet
+   sungguhan, sisanya adalah kalimat, bukan pencarian.
+
+Pencarian bebas tetap bisa selama tidak dicampur dengan nomor sheet:
+`/pdf lighting` mencari nama sheet yang memuat kata itu.
+
+Setiap kata yang TIDAK jadi sheet selalu disebut di balasan — `Dilewati`,
+`Diabaikan`, atau `Ambigu`. Kalau hasilnya lebih banyak dari yang kamu minta,
+baris-baris itu yang menjelaskan kenapa.
+
 ### D. Modifikasi — admin, wajib konfirmasi dua langkah
 
 | Command | Efek |
