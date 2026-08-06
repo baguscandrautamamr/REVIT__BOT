@@ -22,6 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     activeDoc?: string | null;
     revitVersion?: string | null;
     addinVersion?: string | null;
+    busy?: boolean;
   };
 
   try {
@@ -41,6 +42,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const machine = await db.getMachine();
     if (machine.is_paused || !machine.bot_enabled) {
       return res.status(200).json({ job: null, paused: true });
+    }
+
+    // Add-in masih mengerjakan job sebelumnya di main thread Revit. Heartbeat
+    // di atas sudah dicatat — itu justru tujuan panggilan ini — tapi memberi
+    // job kedua akan membuat hasilnya saling menimpa.
+    if (body.busy === true) {
+      return res.status(200).json({ job: null, paused: false, busy: true });
     }
 
     const job = await db.claimNextCommand();

@@ -57,8 +57,17 @@ public sealed class App : IExternalApplication
     {
         // Tanpa Cancel(), thread polling terus hidup setelah Revit ditutup dan
         // menahan proses tetap berjalan di Task Manager.
-        _worker?.Stop();
-        _externalEvent?.Dispose();
+        //
+        // ExternalEvent dibuang SETELAH loop berhenti, bukan di baris ini. Loop
+        // memanggil Raise() di setiap siklus polling, jadi membuangnya sekarang
+        // — selagi siklus terakhir mungkin masih menunggu HTTP — melempar
+        // exception di thread latar tepat ketika Revit sedang menutup diri.
+        var externalEvent = _externalEvent;
+        _externalEvent = null;
+
+        if (_worker is not null) _worker.Stop(() => externalEvent?.Dispose());
+        else externalEvent?.Dispose();
+
         return Result.Succeeded;
     }
 }
