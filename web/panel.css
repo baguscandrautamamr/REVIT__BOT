@@ -1,0 +1,146 @@
+/* Tata letak panel. Warna & material seluruhnya dari theme.css —
+   file ini sengaja tidak memuat satu pun nilai warna literal. */
+
+.shell {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px
+           calc(24px + env(safe-area-inset-bottom));
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* ── Topbar ─────────────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky;
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+.topbar__id { display: flex; align-items: center; gap: var(--space-3); }
+.topbar__prefs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 38px; height: 38px;
+  border-radius: 12px;
+  background: var(--accent-weak);
+  border: 1px solid var(--stroke);
+  font-size: 18px;
+}
+.topbar h1 { margin: 0; font-size: 17px; font-weight: 640; letter-spacing: -0.01em; }
+.topbar p { margin: 0; font-size: 12px; }
+
+/* ── Kartu ──────────────────────────────────────────────────────────────── */
+.grid { display: grid; gap: var(--space-4); }
+@media (min-width: 720px) {
+  /* align-items: start supaya tiap kartu setinggi isinya sendiri —
+     tanpa ini kartu status ikut meregang mengejar tinggi kartu antrean. */
+  .grid { grid-template-columns: 1fr 1fr; align-items: start; }
+  #cmd-card { grid-column: 1 / -1; }
+}
+
+.card { padding: var(--space-4) var(--space-5) var(--space-5); }
+.card__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.card__head h2 { margin: 0; font-size: 14px; font-weight: 620; letter-spacing: 0.01em; }
+.small { font-size: 12px; }
+.empty { font-size: 13px; margin: var(--space-2) 0 0; }
+
+/* ── Daftar key/value ───────────────────────────────────────────────────── */
+.kv { margin: 0; display: grid; gap: var(--space-2); }
+.kv > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--stroke-soft);
+}
+.kv > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.kv dt { margin: 0; color: var(--text-2); font-size: 13px; }
+.kv dd { margin: 0; font-size: 13px; font-weight: 560; text-align: right; overflow-wrap: anywhere; }
+
+/* ── Statistik antrean ──────────────────────────────────────────────────── */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+.stat {
+  padding: var(--space-3);
+  display: grid;
+  gap: 2px;
+  text-align: center;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--r-md);
+}
+.stat b { font-size: 20px; font-weight: 620; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 11px; color: var(--text-2); }
+
+.queue { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.queue li {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+}
+.queue time { margin-left: auto; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* ── Daftar command ─────────────────────────────────────────────────────── */
+.cmd-group { margin-bottom: var(--space-4); }
+.cmd-group:last-child { margin-bottom: 0; }
+.cmd-group h3 {
+  margin: 0 0 var(--space-2);
+  font-size: 11px;
+  font-weight: 620;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.cmd-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.chip {
+  appearance: none;
+  font: inherit;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--glass-3);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-pill);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-spring);
+}
+.chip:hover { background: var(--glass-hover); }
+.chip:active { transform: scale(0.95); }
+.chip[data-role='admin']::after { content: ' ·admin'; color: var(--text-3); font-size: 11px; }
+.chip.is-copied { background: var(--accent-weak); border-color: var(--accent); }
+
+/* Toast kecil untuk "Disalin" */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 16px);
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 560;
+  border-radius: var(--r-pill);
+  background: var(--glass-2);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease-out), transform var(--dur) var(--ease-spring);
+}
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }

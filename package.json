@@ -1,0 +1,19 @@
+{
+  "name": "revit-telegram-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Telegram bot bridge for Revit electrical models — dual language (ID/EN), dual theme.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "check:i18n": "tsx scripts/check-i18n.ts",
+    "set-commands": "tsx scripts/set-commands.ts",
+    "check": "npm run typecheck && npm run check:i18n"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "playwright": "^1.62.1",
+    "tsx": "^4.23.8",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.vercel/
+dist/
+*.log
+
+# Add-in build output (Windows)
+addin/bin/
+addin/obj/
