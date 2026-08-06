@@ -30,13 +30,38 @@ export function isOnline(lastSeenAt: string | null): boolean {
 }
 
 /**
- * Job `running` yang belum melapor selewat ini dianggap mati.
+ * Job `running` dianggap mati kalau PC-nya TIDAK terlihat lagi selewat ini.
  *
- * Lebih longgar dari `expires_at` (10 menit) karena job berat yang SEDANG
- * dikerjakan memang boleh lama — yang dibunuh di sini hanya yang tidak akan
- * pernah melapor lagi (Revit ditutup, add-in di-restart, PC mati).
+ * Berlaku hanya saat heartbeat berhenti — Revit ditutup, add-in di-restart, PC
+ * mati. Selama heartbeat masih masuk, angka ini tidak dipakai sama sekali; lihat
+ * `MAX_RUNTIME_MS`.
  */
 export const STUCK_AFTER_MS = 15 * 60 * 1000;
+
+/**
+ * Batas ATAS lama satu job, dipakai walau add-in bilang masih mengerjakannya.
+ *
+ * Ada karena "add-in masih hidup" bukan jaminan job-nya akan selesai: satu
+ * dialog Revit yang tidak tertangkap DialogSuppressor bisa menggantung main
+ * thread selamanya, dan tanpa batas atas pesan "⏳" milik user tidak pernah
+ * berubah. Dua jam sengaja jauh di atas export terberat yang masuk akal —
+ * batas ini jaring terakhir, bukan penjadwal.
+ */
+export const MAX_RUNTIME_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Job `running` yang TIDAK diakui add-in dianggap terlantar selewat ini.
+ *
+ * Sinyal yang jauh lebih tajam daripada timer: add-in mengirim `busy` di setiap
+ * heartbeat, dan `busy` mencakup job yang masih di antrean internalnya. Jadi
+ * "PC hidup, tapi tidak sedang memegang job apa pun, padahal ada baris
+ * `running`" berarti job itu hilang bersama restart add-in — dan itu bisa
+ * diketahui dalam dua menit, bukan lima belas.
+ *
+ * Tidak nol karena ada jeda wajar antara server menandai `running` dan add-in
+ * menerima balasan claim lalu memasukkannya ke antrean.
+ */
+export const ORPHAN_AFTER_MS = 2 * 60 * 1000;
 
 /**
  * Selisih zona waktu kantor terhadap UTC, dalam menit. Default +07:00 (WIB).

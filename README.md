@@ -127,6 +127,16 @@ adalah `—disc`, satu karakter. Versi pertama fitur ini menolaknya dan menjawab
 sekarang; nomor sheet berawalan hubung tetap dibaca sebagai nomor sheet. Lihat
 `splitArgs` di `api/_lib/commands.ts`.
 
+**`--disc` itu berat, dan `--series` yang dimaksudkan untuk dipakai sehari-hari.**
+Satu discipline di proyek nyata bisa 25 sheet A1; satu PDF gabungan sebesar itu
+mudah melewati batas kirim Telegram 50 MB, dan lama export-nya dihitung dalam
+puluhan menit. Per series (2–4 sheet) selesai dalam hitungan menit, muat dikirim,
+dan namanya langsung membedakan.
+
+Job yang lama TIDAK lagi dibunuh penyapu selama add-in masih memegangnya —
+ambangnya sekarang dipilih dari apa yang dilaporkan heartbeat, bukan dari satu
+timer. Lihat `runningLimit` di `api/_lib/sweep.ts`.
+
 Batas `maxSheets` per role ditegakkan di ADD-IN untuk jalur ini, bukan di server:
 pemeriksaan di server menghitung panjang daftar sheet yang diketik, dan
 permintaan per-grup cuma satu kata. Lihat `api/telegram/webhook.ts` di sekitar

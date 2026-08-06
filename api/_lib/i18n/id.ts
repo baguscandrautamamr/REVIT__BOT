@@ -24,6 +24,9 @@ export const id = {
     elapsed: (p: Params) => `Waktu proses: ${p.duration}`,
     position: (p: Params) => `Antrean posisi ${p.pos} dari ${p.total}`,
     empty: '(kosong)',
+    // Hasil yang tiba SESUDAH server sempat menyimpulkan job-nya mati. Disebutkan
+    // apa adanya: pesan "terputus" yang sudah dibaca user tadi ternyata salah.
+    lateResult: '✅ Selesai (hasilnya menyusul — job ini sempat ditandai terputus)',
   },
 
   errors: {
@@ -54,6 +57,10 @@ export const id = {
       'jadi tidak ada gunanya diantre. Command yang sudah jalan ditandai di /help.',
     stuck:
       '⚠️ Terputus di tengah jalan — Revit ditutup atau add-in berhenti sebelum hasilnya dikirim. Jalankan ulang command-nya.',
+    // Beda dari `stuck`, dan bedanya penting: di sini Revit MASIH hidup. Menyuruh
+    // orang memeriksa PC yang tidak apa-apa hanya membuang waktunya.
+    tooLong:
+      '⏱️ Dihentikan karena kelewat lama — Revit masih terbuka, tapi job ini tidak selesai dalam batas waktu. Coba per grup yang lebih kecil (/sheets --groups), bukan seluruh discipline sekaligus.',
     workerPaused:
       '⏸️ Worker sedang di-pause admin. Command tetap diantre, tapi baru dikerjakan setelah /resume.',
     fileTooBig: (p: Params) =>

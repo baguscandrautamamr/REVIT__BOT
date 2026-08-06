@@ -44,7 +44,21 @@ public sealed class CommandHandler : IExternalEventHandler
 
     public string? RevitVersion { get; private set; }
 
-    public bool IsBusy => Volatile.Read(ref _busy) == 1;
+    /// <summary>
+    /// Add-in masih MEMEGANG sebuah job — sedang dikerjakan, atau masih menunggu
+    /// di antrean internal.
+    ///
+    /// Antrean ikut dihitung, dan itu bukan detail. Nilai ini dikirim ke server
+    /// tiap heartbeat, dan server memakainya untuk memutuskan apakah sebuah baris
+    /// `running` masih ada yang mengerjakan. Kalau hanya `_busy` yang dihitung,
+    /// ada jendela nyata antara job diterima dari /claim dan ExternalEvent
+    /// benar-benar jalan — Revit menjalankannya saat idle, dan kalau orang yang
+    /// duduk di depannya sedang membuka dialog, jendela itu bisa panjang. Di
+    /// dalam jendela itu server melihat "PC hidup, tidak memegang job apa pun,
+    /// tapi ada job running" dan menyimpulkan job-nya terlantar — lalu menutupnya
+    /// tepat sebelum Revit mulai mengerjakannya.
+    /// </summary>
+    public bool IsBusy => Volatile.Read(ref _busy) == 1 || !_pending.IsEmpty;
 
     public void Enqueue(JobDto job) => _pending.Enqueue(job);
 
