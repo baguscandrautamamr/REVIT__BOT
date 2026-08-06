@@ -57,7 +57,11 @@ export const COMMANDS: CommandSpec[] = [
   // ── Info & status ──────────────────────────────────────────────────────
   { name: 'status', role: 'viewer', section: 'info', inMenu: true },
   { name: 'levels', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['lantai', 'level'] } },
-  { name: 'sheets', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['lembar'] } },
+  {
+    name: 'sheets', role: 'viewer', section: 'info', inMenu: true, addin: true,
+    aliases: { id: ['lembar'] },
+    usage: { id: '/sheets · /sheets --groups', en: '/sheets · /sheets --groups' },
+  },
   { name: 'warnings', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['peringatan'] } },
   { name: 'queue', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['antrean', 'antrian'] } },
   // `/start` dikirim otomatis oleh tombol START Telegram saat chat pertama
@@ -78,10 +82,19 @@ export const COMMANDS: CommandSpec[] = [
   { name: 'load', role: 'viewer', section: 'query', inMenu: true, addin: true, aliases: { id: ['beban'] }, usage: { id: '/load L1', en: '/load L1' } },
 
   // ── Export ─────────────────────────────────────────────────────────────
-  { name: 'pdf', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/pdf LP-01 LP-02', en: '/pdf LP-01 LP-02' } },
+  {
+    name: 'pdf', role: 'viewer', section: 'export', inMenu: true, addin: true,
+    usage: {
+      id: '/pdf LP-01 LP-02 · /pdf --series "GENERAL-LV"',
+      en: '/pdf LP-01 LP-02 · /pdf --series "GENERAL-LV"',
+    },
+  },
   { name: 'png', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/png 3D-ELEC', en: '/png 3D-ELEC' } },
   { name: 'schedule', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/schedule PANEL-SCH', en: '/schedule PANEL-SCH' } },
-  { name: 'dwg', role: 'admin', section: 'export', inMenu: false, addin: true, usage: { id: '/dwg E-101', en: '/dwg E-101' } },
+  {
+    name: 'dwg', role: 'admin', section: 'export', inMenu: false, addin: true,
+    usage: { id: '/dwg E-101 · /dwg --series "GROUNDING"', en: '/dwg E-101 · /dwg --series "GROUNDING"' },
+  },
   { name: 'nwc', role: 'admin', section: 'export', inMenu: false, addin: true },
   { name: 'ifc', role: 'admin', section: 'export', inMenu: false, addin: true },
 

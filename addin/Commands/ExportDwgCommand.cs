@@ -16,6 +16,9 @@ public sealed class ExportDwgCommand : IBotCommand
 
     public ExecResult Run(Document doc, JsonElement payload)
     {
+        var group = GroupExport.Run(doc, payload, "dwg", ExportGroup);
+        if (group is not null) return group;
+
         var wanted = payload.StrList("views");
         if (wanted.Count == 0) return ExecResult.Fail("Sheet belum disebutkan.");
 
@@ -35,19 +38,7 @@ public sealed class ExportDwgCommand : IBotCommand
             ? $"{ExportWorkspace.Sanitize(doc.Title)}_{ExportWorkspace.Sanitize(matched[0].SheetNumber)}_{ExportWorkspace.Stamp()}"
             : $"{ExportWorkspace.Sanitize(doc.Title)}_{matched.Count}sheets_{ExportWorkspace.Stamp()}";
 
-        var options = new DWGExportOptions
-        {
-            // Satu DWG per sheet, dengan seluruh view di dalamnya digabung.
-            // Tanpa ini setiap viewport keluar sebagai berkas XREF terpisah,
-            // dan penerimanya mendapat sekantong berkas yang saling menunjuk.
-            MergedViews = true,
-            SharedCoords = true,
-            ExportOfSolids = SolidGeometry.Polymesh,
-            TargetUnit = ExportUnit.Millimeter,
-            FileVersion = ACADVersion.R2018,
-        };
-
-        var ok = doc.Export(workspace.Folder, baseName, matched.Select(s => s.Id).ToList(), options);
+        var ok = doc.Export(workspace.Folder, baseName, matched.Select(s => s.Id).ToList(), Options());
         if (!ok) return ExecResult.Fail("Revit menolak export DWG. Cek warning di model.");
 
         var file = workspace.Collect("dwg", $"{baseName}.zip");
@@ -58,4 +49,30 @@ public sealed class ExportDwgCommand : IBotCommand
 
         return ExecResult.WithFile(text, file.Value.Name, file.Value.Bytes);
     }
-}
+
+    private static DWGExportOptions Options() => new()
+    {
+        // Satu DWG per sheet, dengan seluruh view di dalamnya digabung.
+        // Tanpa ini setiap viewport keluar sebagai berkas XREF terpisah,
+        // dan penerimanya mendapat sekantong berkas yang saling menunjuk.
+        MergedViews = true,
+        SharedCoords = true,
+        ExportOfSolids = SolidGeometry.Polymesh,
+        TargetUnit = ExportUnit.Millimeter,
+        FileVersion = ACADVersion.R2018,
+    };
+
+    /// <summary>
+    /// Satu grup → satu set DWG, dinamai menurut grupnya.
+    ///
+    /// Berbeda dari PDF, Revit menulis SATU DWG PER SHEET di sini — `MergedViews`
+    /// hanya menggabungkan viewport di dalam satu sheet, bukan sheet-nya satu sama
+    /// lain. Nama grup tetap masuk ke nama tiap berkas, karena Revit menempelkan
+    /// nomor sheet-nya sendiri di belakang nama yang kita minta.
+    /// </summary>
+    private static void ExportGroup(Document doc, ExportWorkspace workspace, SheetGroup group, string prefix)
+    {
+        var name = $"{prefix}_{ExportWorkspace.Sanitize(group.Key)}_{ExportWorkspace.Stamp()}";
+        var ok = doc.Export(workspace.Folder, name, group.Sheets.Select(s => s.Id).ToList(), Options());
+        if (!ok) throw new InvalidOperationException($"Revit menolak export DWG untuk grup \"{group.Key}\".");
+    }

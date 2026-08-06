@@ -61,6 +61,21 @@ internal static class PayloadExtensions
             ? v.GetString()
             : null;
 
+    /// <summary>
+    /// Angka dari payload, atau null kalau tidak ada.
+    ///
+    /// Dipakai untuk batas yang ditentukan SERVER lalu ditegakkan di sini —
+    /// batas jumlah sheet per role. Server tidak bisa menegakkannya sendiri untuk
+    /// permintaan per-grup: hanya add-in yang tahu satu grup berisi berapa sheet.
+    /// </summary>
+    public static int? Int(this JsonElement payload, string key) =>
+        payload.ValueKind == JsonValueKind.Object &&
+        payload.TryGetProperty(key, out var v) &&
+        v.ValueKind == JsonValueKind.Number &&
+        v.TryGetInt32(out var n)
+            ? n
+            : null;
+
     public static bool Flag(this JsonElement payload, string key) =>
         payload.ValueKind == JsonValueKind.Object &&
         payload.TryGetProperty(key, out var v) &&

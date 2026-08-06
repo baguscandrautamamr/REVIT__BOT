@@ -93,6 +93,39 @@ docs/
 
 ---
 
+## Export per grup sheet
+
+Sheet di proyek nyata sudah dikelompokkan lewat parameter proyek — di sini
+`ACT SHEET DISCIPLINE` (satu nilai untuk seluruh proyek) dan `ACT SHEET SERIES`
+(yang membentuk sub-kategori di browser tree). Ketiga perintah ini bekerja di
+atas pengelompokan itu, jadi tidak ada yang perlu mengetik 18 nomor sheet:
+
+```bash
+/sheets --groups              # daftar grup + isinya + perintah siap salin
+/pdf --series "GENERAL-LV"    # satu grup → SATU PDF, dinamai menurut grupnya
+/pdf --disc F_UTILITY         # seluruh discipline → satu PDF PER series, di-zip
+```
+
+Dua hal yang menentukan di sini:
+
+**Nama berkas ikut nama grup.** Lewat daftar sheet, dua grup dengan jumlah sheet
+yang sama dan dicetak di hari yang sama menghasilkan nama IDENTIK —
+`PRJ_3sheets_2026-08-06.pdf` untuk GENERAL LV maupun GENERAL ELV. Di folder
+unduhan keduanya bertabrakan dan yang kedua menimpa yang pertama.
+
+**Satu nama series bisa jadi dua grup.** Proyek ini punya dua "GENERAL": set LV
+(`ME-F-EL-…`) dan set ELV (`ME-F-EE-…`). Pembedanya diambil dari parameter urutan
+yang terisi — `SERIES ORDER` untuk LV, `SERIES ORDER EE` untuk ELV — dan akhiran
+`-LV` / `-ELV` hanya ditempel pada series yang memang bercabang. Tanpa pembedaan
+itu, `--series GENERAL` menggabungkan cover LV dan cover ELV ke satu berkas.
+
+Batas `maxSheets` per role ditegakkan di ADD-IN untuk jalur ini, bukan di server:
+pemeriksaan di server menghitung panjang daftar sheet yang diketik, dan
+permintaan per-grup cuma satu kata. Lihat `api/telegram/webhook.ts` di sekitar
+`byGroup`, dan penjaganya di `scripts/simulate-job.ts` §11.
+
+---
+
 ## Perintah yang sering dipakai
 
 ```bash
@@ -161,6 +194,7 @@ Tiga yang sudah ada tapi bergantung pada hal di luar Revit sendiri:
 |---|---|
 | `/nwc` | Butuh add-in **Navisworks Exporters** terpasang di PC Revit — formatnya ditulis add-in Autodesk terpisah, bukan Revit. Kalau belum ada, `/nwc` menjawab dengan kalimat yang menyebutkan itu, bukan exception. |
 | `/panel` `/load` | Angkanya dibaca dari parameter beban model (`RBS_ELEC_APPARENT_LOAD`, `ElectricalSystem`). Elemen yang parameternya kosong DILEWATI dan dihitung terpisah — nol yang tidak dijelaskan akan dikira beban yang memang nol. |
+| `/pdf --series` `/dwg --series` | Mengelompokkan lewat parameter proyek `ACT SHEET SERIES`, dengan `SERIES ORDER` / `SERIES ORDER EE` sebagai pembeda LV/ELV. Nama parameternya ada di `addin/Commands/SheetGroups.cs` — kalau proyekmu memakai nama lain, ubah di sana. Kalau parameternya tidak ada, balasannya mendaftar parameter yang MEMANG ada di sheet, bukan cuma "tidak ditemukan". |
 
 Command yang belum ada di add-in tetap dijawab ("belum diimplementasi"), bukan
 menggantung. Mulai dari `/status`: command kecil itu membuktikan seluruh rantai

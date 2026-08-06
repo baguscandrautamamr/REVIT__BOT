@@ -30,6 +30,7 @@
  *   9. upload-url menolak token/job palsu, dan nama berkas tidak bisa kabur
  *      dari bucket lewat "../"
  *  10. Jam di balasan memakai waktu kantor — bukan jam UTC milik Vercel
+ *  11. Batas sheet per role tidak bisa dilewati lewat `/pdf --series`
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -39,7 +40,9 @@ import type { AddressInfo } from 'node:net';
 
 interface Row { [k: string]: unknown }
 
-const tables: Record<string, Row[]> = { commands: [], machine_state: [], bot_users: [] };
+const tables: Record<string, Row[]> = {
+  commands: [], machine_state: [], bot_users: [], tg_updates: [],
+};
 const objects = new Map<string, Buffer>();
 let bucketExists = true;
 let bucketsCreated = 0;
@@ -628,6 +631,70 @@ async function main() {
     );
     check('/status menyebut jam kantor di kalimat "offline sejak"',
       text.includes('20\\.47'), text.split('\n')[2] ?? text);
+  }
+
+  console.log('\n11. Batas sheet per role tidak boleh bisa dilewati lewat --series');
+  {
+    // Pemeriksaan batas di webhook menghitung panjang daftar sheet yang DIKETIK
+    // user. Permintaan per-grup cuma satu kata, jadi pemeriksaan itu selalu
+    // lolos — berapa pun isi grupnya. Selama batasnya hanya ada di server,
+    // `--series` adalah pintu yang melewatkan aturan yang seharusnya menahan
+    // viewer di 10 sheet, dan tidak ada satu pun error yang menandainya:
+    // PDF-nya sampai, lengkap, 18 sheet.
+    //
+    // Yang menutupnya adalah `maxSheets` di dalam payload, ditegakkan add-in
+    // sesudah grupnya diterjemahkan. Kalau angka itu hilang dari payload,
+    // batasnya hilang sama sekali — jadi keberadaannya diperiksa di sini.
+    const webhook = (await import('../api/telegram/webhook')).default;
+
+    tables.machine_state.push({
+      id: 1, last_seen_at: new Date().toISOString(), active_doc: 'PRJ.rvt',
+      revit_version: '2025', addin_version: '0.1.0', is_paused: false, bot_enabled: true,
+    });
+    // Satu chat BARU per perintah. `/pdf` termasuk command berat, jadi dua
+    // perintah dari chat yang sama akan ditolak cooldown 2 menit — dan yang
+    // ditolak cooldown tidak pernah menghasilkan baris untuk diperiksa.
+    let nextChat = CHAT + 100;
+    async function typed(text: string, updateId: number) {
+      const chatId = nextChat++;
+      tables.bot_users.push({
+        chat_id: chatId, name: `Viewer ${chatId}`, role: 'viewer', is_active: true,
+        lang: 'id', theme: 'auto', created_at: new Date().toISOString(),
+      });
+
+      sent.length = 0;
+      const before = tables.commands.length;
+      await invoke(webhook, {
+        headers: { 'x-telegram-bot-api-secret-token': 'simulasi' },
+        body: { update_id: updateId, message: { chat: { id: chatId }, from: { id: chatId }, text } },
+      });
+      return tables.commands.slice(before).at(-1) as Row | undefined;
+    }
+
+    const group = await typed('/pdf --series "GENERAL-LV"', 1);
+    const payload = (group?.payload ?? {}) as Record<string, unknown>;
+    check('--series diteruskan sebagai grup, bukan nama sheet',
+      payload.series === 'GENERAL-LV' && payload.views === undefined, JSON.stringify(payload));
+    check('batas per role IKUT ke add-in — kalau tidak, batasnya hilang',
+      payload.maxSheets === 10, String(payload.maxSheets));
+
+    const disc = await typed('/pdf --disc F_UTILITY', 2);
+    const discPayload = (disc?.payload ?? {}) as Record<string, unknown>;
+    check('--disc juga membawa batasnya',
+      discPayload.discipline === 'F_UTILITY' && discPayload.maxSheets === 10,
+      JSON.stringify(discPayload));
+
+    // Jalur daftar sheet biasa tidak boleh berubah perilakunya.
+    const plain = await typed('/pdf ME-F-EL-0000 ME-F-EL-0100', 3);
+    const plainPayload = (plain?.payload ?? {}) as Record<string, unknown>;
+    check('daftar sheet biasa tetap tanpa maxSheets',
+      Array.isArray(plainPayload.views) && plainPayload.maxSheets === undefined,
+      JSON.stringify(plainPayload));
+
+    const tooMany = await typed('/pdf ' + Array.from({ length: 11 }, (_, i) => `S-${i}`).join(' '), 4);
+    check('11 sheet yang diketik langsung tetap ditolak di server',
+      tooMany === undefined && sent.some((s) => s.text?.includes('10')),
+      sent.map((s) => s.text).join(' | ').slice(0, 60));
   }
 
   server.close();
