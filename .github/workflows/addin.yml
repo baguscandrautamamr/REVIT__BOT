@@ -1,0 +1,114 @@
+# Build add-in Revit → DLL siap pasang, tanpa perlu Visual Studio.
+#
+# Sebelum ini satu-satunya cara mendapat DLL adalah membangunnya sendiri di PC
+# yang ada Revit-nya. Artinya tidak ada yang pernah memeriksa apakah add-in masih
+# bisa di-compile sampai ada orang yang mencobanya — dan waktu penjaga ini
+# pertama dijalankan, ternyata memang TIDAK bisa: dua kesalahan yang sudah lama
+# ada di repo (`ProtectedData` tanpa paketnya, `PDFExportOptions.MarginType` yang
+# tidak pernah ada) baru ketahuan di sini.
+#
+# Berjalan di Linux, bukan Windows. Add-in ini murni IL — tidak ada WPF, tidak
+# ada kode native — jadi DLL-nya identik, sementara runner Linux dihitung 1×
+# menit dan Windows 2×. Kalau nanti ada jendela WPF, `UseWPF` harus dinyalakan
+# lagi di csproj DAN job ini pindah ke windows-latest.
+#
+# RevitAPI.dll tidak boleh masuk repo (lisensi Autodesk) dan tidak ada di runner,
+# jadi build memakai assembly REFERENSI dari NuGet. Lihat komentar di csproj.
+
+name: addin
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # hanya dipakai langkah "Rilis" di bawah
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Tag v1.2.3 → 1.2.3. Selain itu 0.1.0 + nomor run, supaya DLL hasil build
+      # harian tidak menyamar sebagai rilis. Versi ini yang muncul sebagai
+      # "Add-in" di /status — QueueWorker membacanya dari assembly.
+      - name: Tentukan versi
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.1.0-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # EnableWindowsTargeting: proyeknya net8.0-windows, dan di Linux SDK butuh
+      # izin eksplisit untuk memakai targeting pack Windows. Tidak mengubah
+      # hasilnya — hanya mematikan penjagaan "kamu yakin?" milik SDK.
+      - name: Build
+        run: >
+          dotnet build addin/RevitTelegramBridge.csproj
+          -c Release
+          -p:EnableWindowsTargeting=true
+          -p:Version=${{ steps.ver.outputs.value }}
+
+      # Susunan folder di sini HARUS sama dengan yang ditulis di berkas .addin:
+      # manifest di akar, DLL di subfolder RevitTelegramBridge\. Kalau tidak,
+      # Revit membaca manifest-nya lalu gagal menemukan assembly-nya dan add-in
+      # diam tanpa pesan.
+      - name: Susun paket pasang
+        run: |
+          set -eux
+          out=addin/bin/Release/net8.0-windows
+          mkdir -p pkg/RevitTelegramBridge
+          cp addin/RevitTelegramBridge.addin pkg/
+          cp "$out"/RevitTelegramBridge.dll pkg/RevitTelegramBridge/
+          cp "$out"/System.Security.Cryptography.ProtectedData.dll pkg/RevitTelegramBridge/
+          cat > pkg/CARA-PASANG.txt <<'TXT'
+          Revit Telegram Bridge — cara pasang
+
+          1. Tutup Revit.
+          2. Salin ISI folder ini ke:
+               %APPDATA%\Autodesk\Revit\Addins\2025\
+             Sesudahnya susunannya harus persis begini:
+               ...\Addins\2025\RevitTelegramBridge.addin
+               ...\Addins\2025\RevitTelegramBridge\RevitTelegramBridge.dll
+               ...\Addins\2025\RevitTelegramBridge\System.Security.Cryptography.ProtectedData.dll
+          3. Simpan machine token sekali saja, lewat PowerShell:
+               .\set-token.ps1
+             Token disimpan terenkripsi DPAPI dan terikat ke akun Windows-mu —
+             menyalin filenya ke PC lain tidak ada gunanya.
+          4. Buka Revit, lalu kirim /status ke bot. Kalau PC-nya sudah "online",
+             berarti add-in-nya jalan.
+
+          File .pdb sengaja tidak disertakan: gunanya hanya untuk debugging.
+          TXT
+          cp addin/set-token.ps1 pkg/
+          ls -R pkg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RevitTelegramBridge-${{ steps.ver.outputs.value }}
+          path: pkg/
+          if-no-files-found: error
+
+      # Rilis hanya saat tag v*, supaya halaman Releases berisi versi yang memang
+      # sengaja dikeluarkan — bukan setiap push.
+      - name: Rilis
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          zip -r "RevitTelegramBridge-${{ steps.ver.outputs.value }}.zip" pkg
+          gh release create "${GITHUB_REF#refs/tags/}" \
+            --title "Add-in ${{ steps.ver.outputs.value }}" \
+            --notes "Ekstrak, lalu ikuti CARA-PASANG.txt di dalamnya. Untuk Revit 2025." \
+            "RevitTelegramBridge-${{ steps.ver.outputs.value }}.zip"

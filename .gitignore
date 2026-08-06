@@ -9,3 +9,6 @@ dist/
 # Add-in build output (Windows)
 addin/bin/
 addin/obj/
+
+# Paket pasang add-in, dirakit workflow "addin" (dan bisa dirakit lokal untuk uji)
+pkg/

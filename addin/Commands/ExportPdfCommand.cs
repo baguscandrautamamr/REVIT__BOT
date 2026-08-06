@@ -77,12 +77,14 @@ public sealed class ExportPdfCommand : IBotCommand
     /// <summary>
     /// Tiga setelan yang menentukan skala 1:1. Salah satu saja meleset,
     /// hasilnya bukan gambar kerja lagi:
-    ///   MarginType.Default   → konten bergeser ~5 mm
-    ///   ZoomType.FitToPage   → skala rusak total
-    ///   PaperFormat salah    → A1 tercetak ke A4
+    ///   PaperPlacementType.Margins → konten bergeser sebesar margin printer
+    ///   ZoomType.FitToPage         → skala rusak total
+    ///   PaperFormat salah          → A1 tercetak ke A4
     ///
-    /// Nama enum ditulis mengikuti API Revit 2025. Kalau ada yang tidak
-    /// compile, cocokkan dengan RevitAPI.chm — bukan dengan menebak.
+    /// Catatan yang mahal: `MarginType.NoMargin` TERLIHAT seperti jawabannya dan
+    /// enum itu memang ada di Autodesk.Revit.DB — tapi ia milik PrintParameters
+    /// (API print lama), bukan PDFExportOptions. Padanannya di sini
+    /// `PaperPlacement`, dan Center berarti tanpa offset margin sama sekali.
     /// </summary>
     private static PDFExportOptions BuildOptions(string fileName) => new()
     {
@@ -91,7 +93,7 @@ public sealed class ExportPdfCommand : IBotCommand
         PaperFormat = ExportPaperFormat.Default, // Default = ikut ukuran titleblock
         ZoomType = ZoomType.Zoom,
         ZoomPercentage = 100,
-        MarginType = MarginType.NoMargin,
+        PaperPlacement = PaperPlacementType.Center,
         HideCropBoundaries = true,
         HideScopeBoxes = true,
         HideReferencePlane = true,
