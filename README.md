@@ -46,8 +46,9 @@ api/
     commands.ts     daftar command: role, alias, section  (sumber tunggal)
     telegram.ts     escaping MarkdownV2, kirim pesan/file, verifikasi initData
     db.ts           akses Supabase lewat PostgREST (service role, server-only)
-    limits.ts       batas per role, cooldown, ambang online
+    limits.ts       batas per role, cooldown, ambang online, batas hari
     reply.ts        penyusun teks /help, /status, /queue, /users
+    sweep.ts        tutup job mati (kedaluwarsa / ditinggal Revit) + kabari user
   telegram/
     webhook.ts      pintu masuk Telegram: validasi, routing, antrean
     preferences.ts  handler /lang dan /theme
@@ -60,7 +61,7 @@ addin/
   App.cs            OnStartup: buat ExternalEvent, start worker
   Polling/          loop polling — TANPA Revit API
   Events/           IExternalEventHandler — main thread
-  Commands/         /levels /sheets /count /pdf
+  Commands/         /levels /sheets /warnings /count /tray /find /pdf /schedule
   set-token.ps1     simpan machine token terenkripsi DPAPI
 web/
   index.html        panel / Telegram Mini App
@@ -74,7 +75,8 @@ supabase/
 scripts/
   deploy-bot.ps1    clone + npm ci + deploy konfigurasi bot (Windows)
   set-commands.ts   pasang webhook + menu Telegram per bahasa + scope admin
-  check-i18n.ts     penjaga konsistensi katalog (jalankan di CI)
+  check-i18n.ts     penjaga konsistensi katalog
+  check-commands.ts penjaga sinkronisasi daftar command panel ↔ server
 docs/
 ```
 
@@ -125,12 +127,38 @@ tampilan.
 
 | Bagian | Status |
 |---|---|
-| Server (webhook, claim, report, panel, health) | Lengkap, `tsc` bersih |
+| Server (webhook, claim, report, panel, health) | Lengkap, `npm run check` hijau |
 | Dua bahasa + dua tema | Lengkap, `check-i18n` hijau |
 | Panel web / Mini App | Lengkap, dirender & diuji di Chromium |
 | Add-in Revit | Ditulis lengkap, **belum dikompilasi terhadap `RevitAPI.dll` asli** |
-| Command di add-in | `/levels` `/sheets` `/count` `/pdf` — sisanya tinggal menambah satu berkas |
+| Command di add-in | 8 dari 21 jalan — lihat tabel di bawah |
+
+### Command yang sudah ada di add-in
+
+`/levels` `/sheets` `/warnings` `/count` `/tray` `/find` `/pdf` `/schedule`
+
+### Yang belum, dan kenapa
+
+| Command | Yang menghalangi |
+|---|---|
+| `/panel` `/load` | Butuh API kelistrikan (`ElectricalSystem`, panel schedule). Nama parameter beban berbeda antar template — perlu dicocokkan dengan model asli dulu, menebaknya hanya menghasilkan angka yang salah tanpa terlihat salah. |
+| `/png` `/dwg` | Opsi export-nya banyak dan mudah meleset (skala, layer mapping). Polanya sama dengan `ExportPdfCommand`. |
+| `/nwc` `/ifc` | Perlu exporter Navisworks / IFC terpasang di PC-nya. |
+| `/setparam` `/tag` `/dynamo` | Menunggu alur konfirmasi dua langkah di server (`onCallback` di `webhook.ts` masih kosong untuk `confirm:`). Modifikasi tanpa konfirmasi sengaja tidak dibuka. |
 
 Command yang belum ada di add-in tetap dijawab ("belum diimplementasi"), bukan
 menggantung. Mulai dari `/status`: command kecil itu membuktikan seluruh rantai
 Telegram → Vercel → Supabase → polling → `ExternalEvent` → balik.
+
+---
+
+## Pemeriksaan sebelum deploy
+
+```bash
+npm run check     # typecheck + katalog dua bahasa + sinkronisasi daftar command panel
+```
+
+Ketiganya juga jalan otomatis di GitHub Actions (`.github/workflows/check.yml`).
+Semuanya menangkap kerusakan yang TIDAK menimbulkan error saat runtime: key
+terjemahan yang hilang diam-diam jatuh ke Bahasa Indonesia, dan daftar command
+di panel yang menyimpang hanya menampilkan lebih sedikit tombol.
