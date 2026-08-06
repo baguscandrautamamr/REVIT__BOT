@@ -1,10 +1,12 @@
 # Penjaga yang selama ini hanya ada di dokumentasi.
 #
 # `scripts/check-i18n.ts` menulis "jalankan di CI", tapi CI-nya belum pernah
-# ada — jadi satu-satunya yang menjalankannya adalah orang yang ingat. Ketiga
-# pemeriksaan di sini menangkap kerusakan yang TIDAK menimbulkan error saat
-# runtime: key terjemahan yang hilang diam-diam jatuh ke Bahasa Indonesia, dan
-# daftar command panel yang menyimpang hanya menampilkan lebih sedikit tombol.
+# ada — jadi satu-satunya yang menjalankannya adalah orang yang ingat. Kelima
+# pemeriksaan di `npm run check` menangkap kerusakan yang TIDAK menimbulkan
+# error saat runtime: key terjemahan yang hilang diam-diam jatuh ke Bahasa
+# Indonesia, daftar command panel yang menyimpang hanya menampilkan lebih
+# sedikit tombol, dan berkas hasil yang tidak pernah sampai cuma terlihat
+# sebagai "⏳" yang tidak berubah.
 
 name: check
 
@@ -26,5 +28,5 @@ jobs:
 
       - run: npm ci
 
-      # typecheck + i18n + sinkronisasi daftar command panel
+      # typecheck + i18n + daftar command panel + format modul + simulasi job
       - run: npm run check

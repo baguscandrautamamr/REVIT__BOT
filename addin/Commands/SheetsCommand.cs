@@ -5,13 +5,18 @@ using RevitTelegramBridge.Services;
 
 namespace RevitTelegramBridge.Commands;
 
-/// <summary>/sheets [filter] — daftar sheet beserta revisi terakhir.</summary>
+/// <summary>
+/// /sheets [filter] — daftar sheet beserta revisi terakhir.
+/// /sheets --groups — daftar grup ACT SHEET SERIES beserta isinya.
+/// </summary>
 public sealed class SheetsCommand : IBotCommand
 {
     public string Name => "sheets";
 
     public ExecResult Run(Document doc, JsonElement payload)
     {
+        if (payload.Flag("groups")) return Groups(doc, payload.Str("filter"));
+
         var filter = payload.Str("filter");
 
         var sheets = new FilteredElementCollector(doc)
@@ -54,6 +59,49 @@ public sealed class SheetsCommand : IBotCommand
             Layout.Entry(sb, head, sheet.Name);
         }
 
+        return ExecResult.Success(sb.ToString().TrimEnd());
+    }
+
+    /// <summary>
+    /// Daftar grup beserta isinya, dan perintah siap salin untuk tiap grup.
+    ///
+    /// Ada karena mengetik `/pdf --series "…"` menuntut tahu nama grupnya PERSIS,
+    /// dan nama itu hanya ada di browser tree Revit — di PC, bukan di HP orang
+    /// yang sedang meminta gambarnya. Tanpa daftar ini, fitur per-grup cuma bisa
+    /// dipakai orang yang sedang duduk di depan Revit; padahal justru itu yang
+    /// tidak perlu bot.
+    /// </summary>
+    private static ExecResult Groups(Document doc, string? discipline)
+    {
+        var index = SheetGroups.Build(doc, discipline);
+        if (index is null)
+        {
+            return ExecResult.Fail(
+                $"Model ini tidak punya parameter \"{SheetGroups.SeriesParam}\" di sheet-nya.\n\n" +
+                $"Parameter yang ADA di sheet:\n{SheetGroups.ParameterNames(doc)}");
+        }
+
+        if (index.Groups.Count == 0)
+            return ExecResult.Fail($"Tidak ada grup yang terbentuk.{index.Notes()}");
+
+        var sb = new StringBuilder();
+        var disciplines = SheetGroups.Disciplines(doc);
+
+        sb.AppendLine($"{index.Groups.Count} grup · {index.SheetCount} sheet");
+        sb.AppendLine(disciplines.Count == 1
+            ? $"{SheetGroups.DisciplineParam}: {disciplines[0]}"
+            : $"{SheetGroups.DisciplineParam}: {string.Join(", ", disciplines)}");
+        sb.AppendLine();
+
+        foreach (var group in index.Groups)
+        {
+            Layout.Row(sb, group.Key, $"{group.Sheets.Count,3} sheet", Layout.Width - 10);
+            foreach (var sheet in group.Sheets) Layout.Entry(sb, "  " + sheet.SheetNumber, sheet.Name, "      ");
+            sb.AppendLine($"  /pdf --series \"{group.Key}\"");
+            sb.AppendLine();
+        }
+
+        sb.Append(index.Notes());
         return ExecResult.Success(sb.ToString().TrimEnd());
     }
 

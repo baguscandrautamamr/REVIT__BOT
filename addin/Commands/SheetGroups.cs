@@ -1,0 +1,392 @@
+using System.Text;
+using Autodesk.Revit.DB;
+
+namespace RevitTelegramBridge.Commands;
+
+/// <summary>Satu grup sheet: satu nilai ACT SHEET SERIES, satu sisi (LV/ELV).</summary>
+internal sealed class SheetGroup
+{
+    /// <summary>Nama yang dipakai di nama berkas dan di perintah user.</summary>
+    public required string Key { get; init; }
+
+    /// <summary>Nilai ACT SHEET SERIES apa adanya.</summary>
+    public required string Series { get; init; }
+
+    /// <summary>"LV", "ELV", atau null kalau tidak bisa ditentukan.</summary>
+    public string? Side { get; init; }
+
+    public List<ViewSheet> Sheets { get; } = new();
+}
+
+/// <summary>Hasil menerjemahkan satu model menjadi daftar grup.</summary>
+internal sealed class GroupIndex
+{
+    public List<SheetGroup> Groups { get; } = new();
+
+    /// <summary>Sheet yang ACT SHEET SERIES-nya kosong — tidak masuk grup mana pun.</summary>
+    public List<ViewSheet> Ungrouped { get; } = new();
+
+    /// <summary>Sheet yang MENGISI kedua parameter urutan sekaligus.</summary>
+    public List<ViewSheet> BothSides { get; } = new();
+
+    public int SheetCount => Groups.Sum(g => g.Sheets.Count);
+
+    /// <summary>
+    /// Apa yang tidak masuk hitungan, sebagai kalimat.
+    ///
+    /// Sheet yang hilang diam-diam dari sebuah grup adalah kegagalan yang paling
+    /// mahal di sini: PDF-nya terkirim, terlihat lengkap, dan yang kurang baru
+    /// ketahuan setelah sampai ke pihak lain.
+    /// </summary>
+    public string Notes()
+    {
+        var lines = new List<string>();
+
+        if (Ungrouped.Count > 0)
+        {
+            lines.Add($"{Ungrouped.Count} sheet tanpa {SheetGroups.SeriesParam} — tidak masuk grup mana pun: " +
+                      string.Join(", ", Ungrouped.Take(6).Select(s => s.SheetNumber)) +
+                      (Ungrouped.Count > 6 ? ", …" : ""));
+        }
+
+        if (BothSides.Count > 0)
+        {
+            lines.Add($"{BothSides.Count} sheet mengisi {SheetGroups.OrderLv} DAN {SheetGroups.OrderElv} " +
+                      $"sekaligus, jadi sisinya tidak bisa ditentukan: " +
+                      string.Join(", ", BothSides.Take(6).Select(s => s.SheetNumber)) +
+                      (BothSides.Count > 6 ? ", …" : ""));
+        }
+
+        return lines.Count == 0 ? "" : "\n" + string.Join("\n", lines);
+    }
+}
+
+/// <summary>Grup yang siap diekspor, atau alasan kenapa tidak bisa.</summary>
+internal sealed class GroupSelection
+{
+    public List<SheetGroup> Groups { get; } = new();
+
+    /// <summary>Dipakai di nama berkas: nama grup, atau nama discipline.</summary>
+    public string Label { get; set; } = "";
+
+    /// <summary>Kalau terisi, tidak ada yang diekspor.</summary>
+    public string? Error { get; private init; }
+
+    /// <summary>Sheet yang tidak masuk hitungan — wajib ikut ke chat.</summary>
+    public string Notes { get; init; } = "";
+
+    public bool Ok => Error is null;
+
+    public static GroupSelection Fail(string reason) => new() { Error = reason };
+}
+
+/// <summary>
+/// Mengelompokkan sheet seperti browser tree Revit: ACT SHEET DISCIPLINE di atas,
+/// ACT SHEET SERIES sebagai sub-kategori.
+///
+/// Satu hal yang tidak terlihat dari nilai parameternya sendiri: satu nama series
+/// bisa muncul DUA KALI sebagai dua grup terpisah. Di proyek ini "GENERAL" ada dua
+/// — satu untuk set LV (ME-F-EL-…), satu untuk set ELV (ME-F-EE-…) — karena
+/// proyeknya memelihara dua penomoran paralel lewat dua parameter urutan yang
+/// berbeda. Pembedanya diambil dari sana: sheet yang mengisi
+/// <see cref="OrderLv"/> masuk sisi LV, yang mengisi <see cref="OrderElv"/> masuk
+/// sisi ELV.
+///
+/// Tanpa pembedaan itu, `/pdf --series GENERAL` akan menggabungkan cover LV dan
+/// cover ELV ke dalam satu berkas — dua set dokumen berbeda yang tercampur, dan
+/// tidak ada yang menandainya sampai PDF-nya sudah dikirim ke pihak lain.
+///
+/// Sisinya HANYA dipakai sebagai akhiran nama kalau series itu memang punya dua
+/// sisi. Delapan series lain di proyek ini cuma punya satu, dan menempelkan
+/// "-LV" ke semuanya hanya menambah bising tanpa membedakan apa pun.
+/// </summary>
+internal static class SheetGroups
+{
+    public const string SeriesParam = "ACT SHEET SERIES";
+    public const string DisciplineParam = "ACT SHEET DISCIPLINE";
+    public const string OrderLv = "SERIES ORDER";
+    public const string OrderElv = "SERIES ORDER EE";
+
+    private const string SideLv = "LV";
+    private const string SideElv = "ELV";
+
+    /// <summary>
+    /// Kelompokkan seluruh sheet, opsional disaring per discipline.
+    ///
+    /// Mengembalikan null kalau parameter series-nya tidak ada sama sekali di
+    /// model — beda dengan "ada tapi kosong", dan penanganannya juga beda:
+    /// yang pertama berarti nama parameternya salah, yang kedua berarti datanya
+    /// belum diisi. Membalas keduanya dengan "tidak ada grup" akan membuat orang
+    /// mencari di tempat yang salah.
+    /// </summary>
+    public static GroupIndex? Build(Document doc, string? discipline)
+    {
+        var sheets = ViewFinder.Sheets(doc);
+        if (sheets.Count == 0) return new GroupIndex();
+
+        // Parameternya dicari di SELURUH sheet, bukan cuma yang pertama: satu
+        // sheet yang kebetulan tidak punya parameter itu bukan bukti bahwa
+        // modelnya tidak memakainya.
+        if (!sheets.Any(s => s.LookupParameter(SeriesParam) is not null)) return null;
+
+        var index = new GroupIndex();
+
+        // Kunci berupa TUPLE, bukan string gabungan. Menggabungkan nama series
+        // dengan sisinya lewat pemisah apa pun menimbulkan pertanyaan yang tidak
+        // punya jawaban aman: nama series datang dari parameter yang diisi orang,
+        // jadi karakter pemisah apa pun bisa muncul di dalamnya. Series bernama
+        // "GENERAL LV" lalu bertabrakan dengan series "GENERAL" sisi LV, dan
+        // sheet-nya tercampur ke grup yang salah.
+        var byKey = new Dictionary<(string Series, string Side), SheetGroup>();
+
+        foreach (var sheet in sheets.OrderBy(s => s.SheetNumber, StringComparer.OrdinalIgnoreCase))
+        {
+            if (discipline is not null && !Eq(Text(sheet, DisciplineParam), discipline)) continue;
+
+            var series = Text(sheet, SeriesParam);
+            if (string.IsNullOrWhiteSpace(series))
+            {
+                index.Ungrouped.Add(sheet);
+                continue;
+            }
+
+            var lv = Filled(sheet, OrderLv);
+            var elv = Filled(sheet, OrderElv);
+            if (lv && elv) index.BothSides.Add(sheet);
+
+            string? side = (lv, elv) switch
+            {
+                (true, false) => SideLv,
+                (false, true) => SideElv,
+                _ => null, // keduanya kosong atau keduanya terisi — jangan menebak
+            };
+
+            // Kunci sementara ikut menyertakan sisinya, supaya dua "GENERAL" tidak
+            // bertabrakan. Nama akhirnya baru diputuskan sesudah semua sheet
+            // terbaca — saat itulah bisa diketahui series mana yang benar-benar
+            // punya dua sisi, dan hanya yang bercabang yang perlu akhiran.
+            var key = (Series: series.ToUpperInvariant(), Side: side ?? "");
+            if (!byKey.TryGetValue(key, out var group))
+            {
+                group = new SheetGroup { Key = series, Series = series, Side = side };
+                byKey[key] = group;
+                index.Groups.Add(group);
+            }
+            group.Sheets.Add(sheet);
+        }
+
+        return Rename(index);
+    }
+
+    /// <summary>
+    /// Beri nama akhir tiap grup: akhiran sisi hanya untuk series yang bercabang.
+    /// </summary>
+    private static GroupIndex Rename(GroupIndex index)
+    {
+        var sidesPerSeries = index.Groups
+            .GroupBy(g => g.Series, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        var renamed = new GroupIndex();
+        renamed.Ungrouped.AddRange(index.Ungrouped);
+        renamed.BothSides.AddRange(index.BothSides);
+
+        foreach (var group in index.Groups.OrderBy(g => g.Series, StringComparer.OrdinalIgnoreCase)
+                                          .ThenBy(g => g.Side ?? "", StringComparer.OrdinalIgnoreCase))
+        {
+            var branches = sidesPerSeries.TryGetValue(group.Series, out var n) ? n : 1;
+            var final = new SheetGroup
+            {
+                Key = branches > 1 && group.Side is not null ? $"{group.Series}-{group.Side}" : group.Series,
+                Series = group.Series,
+                Side = group.Side,
+            };
+            final.Sheets.AddRange(group.Sheets);
+            renamed.Groups.Add(final);
+        }
+
+        return renamed;
+    }
+
+    /// <summary>
+    /// Cari grup dari kata yang diketik orang.
+    ///
+    /// Aturannya sama dengan <see cref="ViewFinder"/>, dan itu disengaja: cocok
+    /// ke lebih dari satu grup berarti TIDAK ADA, bukan "ambil yang pertama".
+    /// Mengekspor grup yang salah dengan yakin lebih buruk daripada menolak.
+    /// </summary>
+    public static (SheetGroup? Group, List<SheetGroup> Candidates) Find(GroupIndex index, string wanted)
+    {
+        var term = wanted.Trim();
+
+        // Nama penuh dulu ("GENERAL-LV"), baru nama series-nya ("GENERAL") —
+        // yang menyebut lengkap tidak boleh kalah oleh yang menyebut sebagian.
+        var exact = index.Groups.FirstOrDefault(g => Eq(g.Key, term));
+        if (exact is not null) return (exact, new List<SheetGroup>());
+
+        var bySeries = index.Groups.Where(g => Eq(g.Series, term)).ToList();
+        if (bySeries.Count == 1) return (bySeries[0], new List<SheetGroup>());
+        if (bySeries.Count > 1) return (null, bySeries);
+
+        if (term.Length < 3) return (null, new List<SheetGroup>());
+
+        var loose = index.Groups.Where(g => Has(g.Key, term) || Has(g.Series, term)).ToList();
+        return loose.Count == 1 ? (loose[0], new List<SheetGroup>()) : (null, loose);
+    }
+
+    /// <summary>Daftar grup untuk ditempel di pesan "tidak ditemukan".</summary>
+    public static string Suggest(GroupIndex index)
+    {
+        var sb = new StringBuilder();
+        foreach (var group in index.Groups)
+        {
+            Layout.Row(sb, "· " + group.Key, $"{group.Sheets.Count,3} sheet", Layout.Width - 10);
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Nama parameter yang BENAR-BENAR ada di sheet, untuk dilaporkan saat
+    /// parameter series-nya tidak ketemu.
+    ///
+    /// Balasan "parameter tidak ada" tanpa menyebut apa yang ada memaksa orang
+    /// membuka Revit dan menebak ejaannya — padahal add-in sedang memegang
+    /// daftarnya.
+    /// </summary>
+    public static string ParameterNames(Document doc, int max = 40)
+    {
+        var sheet = ViewFinder.Sheets(doc).FirstOrDefault();
+        if (sheet is null) return "(tidak ada sheet di model ini)";
+
+        var names = sheet.Parameters
+            .Cast<Parameter>()
+            .Select(p => p.Definition?.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var shown = string.Join("\n", names.Take(max).Select(n => "· " + n));
+        return names.Count > max ? $"{shown}\n…dan {names.Count - max} lainnya" : shown;
+    }
+
+    /// <summary>Nilai ACT SHEET DISCIPLINE yang benar-benar dipakai di model.</summary>
+    public static List<string> Disciplines(Document doc) =>
+        ViewFinder.Sheets(doc)
+            .Select(s => Text(s, DisciplineParam))
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => v!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>
+    /// Terjemahkan permintaan per-grup jadi daftar grup yang siap diekspor,
+    /// atau satu kalimat yang menjelaskan kenapa tidak bisa.
+    ///
+    /// Dipisah ke sini karena /pdf dan /dwg harus menjawab dengan cara yang sama
+    /// persis: kata yang sama tidak boleh berarti grup berbeda tergantung command
+    /// mana yang dipakai.
+    /// </summary>
+    public static GroupSelection Select(Document doc, string? series, string? discipline, int maxSheets)
+    {
+        var index = Build(doc, discipline);
+        if (index is null)
+        {
+            return GroupSelection.Fail(
+                $"Model ini tidak punya parameter \"{SeriesParam}\" di sheet-nya, jadi tidak ada " +
+                $"yang bisa dikelompokkan.\n\nParameter yang ADA di sheet:\n{ParameterNames(doc)}");
+        }
+
+        if (discipline is not null && index.Groups.Count == 0 && index.Ungrouped.Count == 0)
+        {
+            var available = Disciplines(doc);
+            return GroupSelection.Fail(
+                $"Tidak ada sheet dengan {DisciplineParam} = \"{discipline}\".\n\nYang ada:\n" +
+                (available.Count == 0
+                    ? $"(tidak satu pun sheet mengisi {DisciplineParam})"
+                    : string.Join("\n", available.Select(d => "· " + d))));
+        }
+
+        // Catatan soal sheet yang tidak masuk grup hanya relevan kalau yang
+        // diminta memang SELURUH grup. Untuk `--series GROUNDING`, menempelkan
+        // "3 sheet tanpa ACT SHEET SERIES" di ujung balasan membuat orang mengira
+        // ada yang hilang dari grup yang justru sudah lengkap.
+        var selection = new GroupSelection { Notes = series is null ? index.Notes() : "" };
+
+        if (series is not null)
+        {
+            var (group, candidates) = Find(index, series);
+            if (group is null)
+            {
+                var why = candidates.Count > 1
+                    ? $"\"{series}\" cocok ke {candidates.Count} grup sekaligus — sebut lengkap: " +
+                      string.Join(", ", candidates.Select(c => c.Key))
+                    : $"Grup \"{series}\" tidak ditemukan.";
+                return GroupSelection.Fail($"{why}\n\nYang ada:\n{Suggest(index)}");
+            }
+            selection.Groups.Add(group);
+            selection.Label = group.Key;
+        }
+        else
+        {
+            selection.Groups.AddRange(index.Groups);
+            selection.Label = discipline ?? "SEMUA";
+            if (selection.Groups.Count == 0)
+                return GroupSelection.Fail($"Tidak ada grup yang terbentuk.{index.Notes()}");
+        }
+
+        // Batas jumlah sheet per role ditegakkan DI SINI, bukan di server.
+        //
+        // Server memeriksa panjang daftar sheet yang diketik user, dan permintaan
+        // per-grup cuma satu kata — jadi pemeriksaan di sana selalu lolos, berapa
+        // pun isi grupnya. Tanpa baris ini, `--series` adalah pintu yang
+        // melewatkan batas yang seharusnya ditahan `LIMITS[role].maxSheets`.
+        var total = selection.Groups.Sum(g => g.Sheets.Count);
+        if (total > maxSheets)
+        {
+            return GroupSelection.Fail(
+                $"Grup ini berisi {total} sheet, di atas batas {maxSheets} sheet sekali kirim untuk " +
+                $"role kamu. Kirim per series: {string.Join(", ", selection.Groups.Take(4).Select(g => g.Key))}" +
+                (selection.Groups.Count > 4 ? ", …" : ""));
+        }
+
+        return selection;
+    }
+
+    private static string? Text(Element e, string name)
+    {
+        var p = e.LookupParameter(name);
+        if (p is null) return null;
+        var raw = p.StorageType == StorageType.String ? p.AsString() : p.AsValueString();
+        return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
+    }
+
+    /// <summary>
+    /// Parameter ini berisi sesuatu atau tidak.
+    ///
+    /// Sengaja tidak memakai `Parameter.HasValue` saja: untuk parameter angka ia
+    /// bernilai true walaupun isinya nol, dan "urutan 0" di proyek ini berarti
+    /// belum diisi — bukan urutan pertama. Kalau salah dibaca, SELURUH sheet
+    /// terlihat mengisi kedua parameter urutan sekaligus dan tidak ada satu pun
+    /// grup yang bisa dipisah.
+    /// </summary>
+    private static bool Filled(Element e, string name)
+    {
+        var p = e.LookupParameter(name);
+        if (p is null || !p.HasValue) return false;
+
+        return p.StorageType switch
+        {
+            StorageType.String => !string.IsNullOrWhiteSpace(p.AsString()),
+            StorageType.Integer => p.AsInteger() != 0,
+            StorageType.Double => Math.Abs(p.AsDouble()) > 1e-9,
+            StorageType.ElementId => p.AsElementId() != ElementId.InvalidElementId,
+            _ => false,
+        };
+    }
+
+    private static bool Eq(string? a, string b) => string.Equals(a?.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+    private static bool Has(string? a, string b) => a is not null && a.Contains(b, StringComparison.OrdinalIgnoreCase);
+}

@@ -246,6 +246,21 @@ async function enqueue(
     return;
   }
 
+  // Permintaan per-grup TIDAK bisa dibatasi di sini, dan pemeriksaan di atas
+  // memberi kesan sebaliknya.
+  //
+  // Yang dihitungnya adalah panjang daftar sheet yang DIKETIK user. `/pdf
+  // --series GENERAL` cuma satu kata, jadi `views.length` nol dan batasnya selalu
+  // lolos — berapa pun isi grupnya. Selama batas itu hanya ada di sini, `--series`
+  // adalah pintu yang melewatkan aturan yang seharusnya ditahan `maxSheets`:
+  // viewer bisa menarik 18 sheet lewat celah yang menahannya di 10.
+  //
+  // Angkanya karena itu ikut ke dalam payload, dan add-in menegakkannya SETELAH
+  // grupnya diterjemahkan jadi daftar sheet. Server tidak bisa mengerjakannya
+  // sendiri: isi grup hanya ada di model, dan model hanya ada di PC itu.
+  const byGroup = 'series' in built.payload || 'discipline' in built.payload;
+  if (byGroup) built.payload.maxSheets = max;
+
   // Cooldown untuk command berat.
   if (HEAVY.includes(spec.name)) {
     const remaining = cooldownRemaining(await db.lastHeavyCommandAt(chatId, HEAVY));
@@ -318,7 +333,12 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
     case 'ifc':
       return { payload: {} };
 
+    // `--groups` mendaftar grup ACT SHEET SERIES, bukan sheet satu per satu.
+    // Nilai di belakangnya, kalau ada, menyaring per discipline.
     case 'sheets':
+      if (flags.includes('groups') || flags.includes('grup')) {
+        return { payload: { groups: true, filter: joined || null } };
+      }
       return { payload: { filter: joined || null } };
 
     case 'count': {
@@ -360,10 +380,25 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
     // Daftar sheet: spasi memisahkan, karena beberapa sheet boleh sekaligus.
     // Nomor sheet tidak mengandung spasi; kalau kamu memakai NAMA sheet yang
     // mengandung spasi, kutip: /pdf "GROUND & FIRST FLOOR"
+    //
+    // `--series` / `--disc` memilih per GRUP, bukan per sheet. Nama grupnya tidak
+    // pernah diterjemahkan di sini: hanya add-in yang memegang model, jadi hanya
+    // ia yang tahu satu grup berisi sheet apa saja. Server cuma meneruskan
+    // katanya — dan ikut mengirim batas per role, karena batas di sini menghitung
+    // panjang daftar sheet yang diketik user dan permintaan grup cuma satu kata.
     case 'pdf':
-    case 'dwg':
+    case 'dwg': {
+      if (flags.includes('series')) {
+        if (!joined) return { error: t('errors.missingArgs', { example: `/${spec.name} --series "GENERAL-LV"` }) };
+        return { payload: { series: joined } };
+      }
+      if (flags.includes('disc') || flags.includes('discipline')) {
+        if (!joined) return { error: t('errors.missingArgs', { example: `/${spec.name} --disc F_UTILITY` }) };
+        return { payload: { discipline: joined } };
+      }
       if (!positional.length) return { error: t('errors.missingArgs', { example }) };
       return { payload: { views: positional } };
+    }
 
     // Satu view saja, jadi seluruh token digabung — nama view hampir selalu
     // mengandung spasi ("GROUND & FIRST FLOOR - LIGHTING"), dan tidak ada

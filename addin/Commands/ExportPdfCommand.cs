@@ -9,6 +9,11 @@ namespace RevitTelegramBridge.Commands;
 /// Memakai PDFExportOptions (Revit 2022+), BUKAN PrintManager: jalur print
 /// driver memunculkan dialog dan menggantung proses tanpa ada yang bisa
 /// menekan OK di PC yang tidak ditunggui.
+///
+/// Tiga cara memilih sheet, dan ketiganya berakhir di jalur export yang sama:
+///   /pdf ME-F-EP-1101 …            nomor/nama sheet, satu per satu
+///   /pdf --series "GENERAL-LV"     satu grup ACT SHEET SERIES → satu PDF
+///   /pdf --disc F_UTILITY          seluruh discipline → satu PDF PER series
 /// </summary>
 public sealed class ExportPdfCommand : IBotCommand
 {
@@ -16,6 +21,9 @@ public sealed class ExportPdfCommand : IBotCommand
 
     public ExecResult Run(Document doc, JsonElement payload)
     {
+        var group = GroupExport.Run(doc, payload, "pdf", ExportGroup);
+        if (group is not null) return group;
+
         var wanted = payload.StrList("views");
         if (wanted.Count == 0) return ExecResult.Fail("Sheet belum disebutkan.");
 
@@ -53,6 +61,22 @@ public sealed class ExportPdfCommand : IBotCommand
                  + picked.Notes();
 
         return ExecResult.WithFile(text, file.Value.Name, file.Value.Bytes);
+    }
+
+    /// <summary>
+    /// Satu grup → satu PDF, dinamai menurut grupnya.
+    ///
+    /// Namanya yang jadi alasan utama jalur ini ada. Lewat daftar sheet, dua grup
+    /// yang jumlah sheet-nya sama dan dicetak di hari yang sama menghasilkan nama
+    /// berkas yang IDENTIK — `PRJ_3sheets_2026-08-06.pdf` untuk GENERAL LV maupun
+    /// GENERAL ELV. Di folder unduhan keduanya bertabrakan, dan yang kedua menimpa
+    /// yang pertama tanpa satu pun tanda.
+    /// </summary>
+    private static void ExportGroup(Document doc, ExportWorkspace workspace, SheetGroup group, string prefix)
+    {
+        var name = $"{prefix}_{ExportWorkspace.Sanitize(group.Key)}_{ExportWorkspace.Stamp()}";
+        var ok = doc.Export(workspace.Folder, group.Sheets.Select(s => s.Id).ToList(), BuildOptions(name));
+        if (!ok) throw new InvalidOperationException($"Revit menolak export PDF untuk grup \"{group.Key}\".");
     }
 
     /// <summary>
