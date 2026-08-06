@@ -325,6 +325,36 @@ Security       → OST_SecurityDevices
 | `/nwc` | admin | `/nwc` | For Navisworks |
 | `/ifc` | admin | `/ifc` | Slow: 5–15 minutes. The bot warns up front |
 
+#### How sheet names are matched
+
+`/pdf` and `/dwg` split their arguments on WHITESPACE — one word, one sheet.
+Don't append a sentence:
+
+```
+/pdf ME-F-LP-1101                            ← right
+/pdf ME-F-LP-1101 ME-F-SO-1101               ← right, two sheets
+/pdf "GROUND & FIRST FLOOR"                  ← names with spaces: quote them
+/pdf ME-F-LP-1101 export this sheet at 1:1   ← every word is read as a sheet
+```
+
+Matching order:
+
+1. **Exact** sheet number — always wins.
+2. **Exact** sheet name.
+3. **Partial** match, minimum 3 characters, and only when it is the **only**
+   one. Matching several sheets is answered "ambiguous", never guessed —
+   silently picking one of them means confidently sending the wrong drawing.
+4. If any word already named a sheet exactly, words that merely *resemble* one
+   are **not used at all**: once a word proves to be a real sheet number, the
+   rest is a sentence, not a search.
+
+Free search still works as long as it isn't mixed with sheet numbers:
+`/pdf lighting` looks for sheet names containing that word.
+
+Every word that did NOT become a sheet is always listed in the reply —
+`Dilewati` (skipped), `Diabaikan` (ignored) or `Ambigu` (ambiguous). If you get
+more sheets than you asked for, those lines explain why.
+
 ### D. Modification — admin only, two-step confirmation required
 
 | Command | Effect |
