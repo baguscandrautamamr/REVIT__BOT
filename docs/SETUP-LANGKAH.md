@@ -272,6 +272,17 @@ Dan ketuk tombol **Panel** di sebelah kotak ketik untuk membuka Mini App.
 Ini yang membuat `/status` berubah hijau dan `/count`, `/levels`, `/pdf`
 benar-benar bekerja. Langkah ini **butuh terminal** di PC Revit.
 
+> ### Add-in ini tidak punya ribbon
+>
+> Jangan mencarinya di antara tab Revit — **tidak ada tab, tidak ada tombol,
+> tidak ada ikon.** Itu memang rancangannya: yang memberi perintah adalah
+> Telegram, jadi tombol di Revit tidak ada gunanya, dan setiap add-in yang
+> menambah tab ikut memakan lebar ribbon orang lain.
+>
+> Cara memastikan ia benar-benar jalan hanya satu: kirim `/status` ke bot. Kalau
+> jawabannya **🟢 PC online** dan barisnya menyebut versi add-in, ia hidup.
+> Kalau masih 🔴, barulah ada yang salah.
+
 **a. Ambil DLL-nya.** Ada dua jalan; yang pertama tidak perlu terminal sama
 sekali.
 

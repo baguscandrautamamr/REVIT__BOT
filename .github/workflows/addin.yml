@@ -102,6 +102,11 @@ jobs:
              Lalu kirim /status ke bot. Kalau PC-nya sudah "online", berarti
              add-in-nya jalan.
 
+          Add-in ini TIDAK menambah tab atau tombol apa pun di ribbon Revit, dan
+          itu disengaja: yang memberi perintah adalah Telegram. Jadi jangan
+          mencarinya di ribbon — /status yang hijau adalah satu-satunya tanda
+          bahwa ia hidup.
+
           File .pdb sengaja tidak disertakan: gunanya hanya untuk debugging.
           TXT
           cp addin/set-token.ps1 pkg/

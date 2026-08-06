@@ -37,6 +37,35 @@ public sealed class CommandHandler : IExternalEventHandler
 
     public string? RevitVersion { get; private set; }
 
+    /* ── Dilaporkan dari main thread ──────────────────────────────────────
+       Dulu kedua nilai di atas HANYA terisi di dalam Execute — yaitu saat ada
+       job masuk. Sebelum command pertama dijalankan, /status karena itu bilang
+       "belum ada dokumen terbuka" dan "Revit: —" padahal modelnya jelas-jelas
+       terbuka di layar. Yang salah bukan Revit, melainkan add-in yang memang
+       belum pernah melihat.
+
+       Tiga metode di bawah dipanggil App dari event Revit, yang seluruhnya
+       berjalan di main thread — jadi aturan thread tetap utuh. Worker membaca
+       propertinya tanpa lock: penulisan referensi string bersifat atomik di
+       .NET, jadi yang terbaca selalu nilai lama atau nilai baru, tidak pernah
+       separuh. */
+
+    /// <summary>Main thread saja. Dokumen yang sedang dilihat user berubah.</summary>
+    public void NoteActiveDocument(Document? doc) => LastKnownDocTitle = doc?.Title;
+
+    /// <summary>
+    /// Main thread saja. Dipanggil SEBELUM dokumen ditutup — saat ini judulnya
+    /// masih bisa dibaca. Kalau yang ditutup bukan yang sedang dilaporkan,
+    /// laporannya dibiarkan: masih ada dokumen lain yang terbuka.
+    /// </summary>
+    public void NoteDocumentClosing(Document? doc)
+    {
+        if (doc is null || doc.Title == LastKnownDocTitle) LastKnownDocTitle = null;
+    }
+
+    /// <summary>Main thread saja. Diketahui sejak OnStartup, tanpa perlu dokumen.</summary>
+    public void NoteRevitVersion(string? version) => RevitVersion = version;
+
     public bool IsBusy => Volatile.Read(ref _busy) == 1;
 
     public void Enqueue(JobDto job) => _pending.Enqueue(job);
