@@ -56,23 +56,28 @@ public sealed class PanelCommand : IBotCommand
             return ExecResult.Success(sb.ToString());
         }
 
-        sb.AppendLine($"{"Circuit",-10} {"Beban",-22} {"VA",8} {"P",3} {"A",5}");
-        sb.AppendLine(new string('-', 52));
+        // Angka dulu, nama beban PALING BELAKANG.
+        //
+        // Susunan lama menaruh nama beban di tengah dan memotongnya di huruf
+        // ke-22, jadi "LIGHTING GROUND FLOOR ZONE A" dan "LIGHTING GROUND FLOOR
+        // ZONE B" tercetak sama persis — dua circuit berbeda yang tidak bisa
+        // dibedakan, di tabel yang gunanya justru membedakan circuit. Dengan
+        // nama di belakang, ia bisa dibungkus ke baris berikutnya tanpa
+        // menggeser satu pun kolom angka.
+        sb.AppendLine($"{"CKT",-6}{"VA",7} {"P",3} {"A",4}  Beban");
+        sb.AppendLine(Layout.Rule());
 
         double totalVa = 0;
         foreach (var circuit in circuits.OrderBy(c => Natural(CircuitNumber(c))))
         {
             var va = Apparent(circuit);
             totalVa += va;
-            sb.AppendLine(
-                $"{Trim(CircuitNumber(c: circuit), 10),-10} " +
-                $"{Trim(circuit.LoadName, 22),-22} " +
-                $"{va,8:N0} " +
-                $"{Poles(circuit),3} " +
-                $"{Rating(circuit),5:N0}");
+
+            var lead = $"{CircuitNumber(circuit),-6}{va,7:N0} {Poles(circuit),3} {Rating(circuit),4:N0}  ";
+            Layout.Hanging(sb, lead, circuit.LoadName, lead.Length);
         }
 
-        sb.AppendLine(new string('-', 52));
+        sb.AppendLine(Layout.Rule());
         sb.AppendLine($"{circuits.Count} circuit · total {totalVa:N0} VA ({totalVa / 1000:N1} kVA)");
 
         return ExecResult.Success(sb.ToString().TrimEnd());
@@ -116,12 +121,6 @@ public sealed class PanelCommand : IBotCommand
     {
         var digits = new string(s.Where(char.IsDigit).ToArray());
         return digits.Length > 0 ? digits.PadLeft(6, '0') : s;
-    }
-
-    private static string Trim(string? s, int max)
-    {
-        s ??= "—";
-        return s.Length <= max ? s : s[..(max - 1)] + "…";
     }
 
     private static bool Eq(string? a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);

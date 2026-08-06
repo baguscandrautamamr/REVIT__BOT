@@ -44,13 +44,17 @@ public sealed class TrayCommand : IBotCommand
         sb.AppendLine(level.Name);
         sb.AppendLine();
 
-        var width = groups.Count > 0 ? Math.Min(groups.Max(g => g.Key.Length), 24) : 1;
+        // Kolom selebar nama terpanjang yang masih wajar. Nama yang melewatinya
+        // TIDAK dipotong — ia mengambil barisnya sendiri dan angkanya menyusul
+        // di kolom yang sama, jadi deretan angkanya tetap lurus tanpa ada satu
+        // pun nama tipe tray yang hilang separuh.
+        // Lantai yang hanya berisi fitting tanpa satu pun segmen tray membuat
+        // `groups` kosong — dan `Max()` atas urutan kosong melempar, bukan
+        // mengembalikan nol.
+        var width = groups.Count > 0 ? Math.Min(groups.Max(g => g.Key.Length), 24) + 1 : 1;
 
         foreach (var group in groups)
-        {
-            var key = group.Key.Length > 24 ? group.Key[..23] + "…" : group.Key;
-            sb.AppendLine($"{key.PadRight(width)} {group.Count,5} bh {group.Metres,9:N1} m");
-        }
+            Layout.Row(sb, group.Key, $"{group.Count,5} bh {group.Metres,9:N1} m", width);
 
         sb.AppendLine();
         sb.AppendLine($"Total {trays.Count} segmen · {trays.Sum(LengthMetres):N1} m");

@@ -98,20 +98,25 @@ public sealed class CountByLevelCommand : IBotCommand
             if (category == BuiltInCategory.OST_CableTray)
             {
                 var metres = elements.Sum(LengthMetres);
-                sb.AppendLine($"{label,-13} {elements.Count,5}   {metres,8:N1} m");
+                Layout.Row(sb, label, $"{elements.Count,5}   {metres,8:N1} m", 14);
             }
             else
             {
-                sb.AppendLine($"{label,-13} {elements.Count,5}");
+                Layout.Row(sb, label, $"{elements.Count,5}", 14);
             }
 
             if (detail && elements.Count > 0)
             {
+                // Nama TIPE keluarga di proyek nyata panjang-panjang
+                // ("Downlight LED 18W - Recessed - 200mm"). Dulu kolomnya
+                // dipatok 24 tanpa dipotong, jadi setiap nama yang lebih panjang
+                // mendorong angkanya keluar jalur dan kolomnya berhenti lurus
+                // persis di baris yang paling banyak isinya.
                 foreach (var group in elements
                              .GroupBy(TypeNameOf)
                              .OrderByDescending(g => g.Count()))
                 {
-                    sb.AppendLine($"   {group.Key,-24} {group.Count(),4}");
+                    Layout.Row(sb, "   " + group.Key, $"{group.Count(),4}", 28);
                 }
             }
         }
@@ -233,12 +238,13 @@ public sealed class CountByLevelCommand : IBotCommand
         sb.AppendLine($"Tapi di seluruh model ada {inModel} elemen kategori ini:");
         foreach (var row in byLevel.OrderByDescending(r => r.Value).Take(8))
         {
-            sb.AppendLine($"{row.Value,6}  {row.Key}");
+            Layout.Hanging(sb, row.Value.ToString(), row.Key, 8);
         }
         if (withoutLevel > 0)
         {
-            sb.AppendLine($"{withoutLevel,6}  (levelnya tidak terbaca dari elemen)");
+            Layout.Hanging(sb, withoutLevel.ToString(), "(levelnya tidak terbaca dari elemen)", 8);
         }
+        sb.AppendLine();
         sb.Append($"Sebut salah satu nama di atas persis seperti tertulis, mis. /count \"{byLevel.Keys.FirstOrDefault() ?? level.Name}\"");
         return sb.ToString();
     }

@@ -46,7 +46,7 @@ public sealed class ConnectedLoadCommand : IBotCommand
         double totalVa = 0;
         var counted = 0;
         var withoutLoad = 0;
-        var rows = new List<string>();
+        var rows = new List<(string Label, string Tail)>();
 
         foreach (var (label, category) in Categories)
         {
@@ -68,7 +68,7 @@ public sealed class ConnectedLoadCommand : IBotCommand
 
             if (n == 0) continue;
             totalVa += va;
-            rows.Add($"{label,-13} {n,5} bh {va,10:N0} VA");
+            rows.Add((Label: label, Tail: $"{n,5} bh {va,10:N0} VA"));
         }
 
         if (rows.Count == 0)
@@ -77,7 +77,11 @@ public sealed class ConnectedLoadCommand : IBotCommand
             return ExecResult.Success(sb.ToString());
         }
 
-        foreach (var row in rows) sb.AppendLine(row);
+        // Kolom label dipatok, tapi yang melewatinya turun ke barisnya sendiri
+        // alih-alih menggeser kolom angkanya — deretan VA harus tetap lurus
+        // supaya bisa dibandingkan sekali lihat.
+        var width = Math.Min(rows.Max(r => r.Label.Length), 20) + 1;
+        foreach (var row in rows) Layout.Row(sb, row.Label, row.Tail, width);
         sb.AppendLine();
         sb.AppendLine($"Total {totalVa:N0} VA  ({totalVa / 1000:N1} kVA)");
         sb.AppendLine($"Dari {counted} elemen yang punya nilai beban.");

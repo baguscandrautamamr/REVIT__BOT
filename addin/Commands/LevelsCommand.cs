@@ -25,18 +25,21 @@ public sealed class LevelsCommand : IBotCommand
         if (levels.Count == 0) return ExecResult.Fail("Tidak ada level di model ini.");
 
         var sb = new StringBuilder();
-        var width = levels.Max(l => l.Name.Length);
+        sb.AppendLine($"{levels.Count} level");
+        sb.AppendLine();
+
+        // Kolom dibatasi supaya satu nama level yang panjang tidak melebarkan
+        // SELURUH tabel sampai menggeser layar. Yang melewatinya turun ke
+        // barisnya sendiri, tidak dipotong.
+        var width = Math.Min(levels.Max(l => l.Name.Length), 28) + 2;
 
         foreach (var level in levels)
         {
             // Revit menyimpan panjang dalam feet internal. 304.8 mm per feet.
             var mm = level.Elevation * 304.8;
-            sb.AppendLine($"{level.Name.PadRight(width)}  {mm,10:N0} mm");
+            Layout.Row(sb, level.Name, $"{mm,10:N0} mm", width);
         }
 
-        sb.AppendLine();
-        sb.Append($"{levels.Count} level");
-
-        return ExecResult.Success(sb.ToString());
+        return ExecResult.Success(sb.ToString().TrimEnd());
     }
 }
