@@ -5,7 +5,7 @@
 import { COMMANDS, notImplemented, type Section } from './commands';
 import { code, codeBlocks, mdv2 } from './telegram';
 import { translator, type Locale } from './i18n';
-import { isOnline } from './limits';
+import { UTC_OFFSET_MINUTES, isOnline } from './limits';
 import type { BotUser, CommandRow, MachineState, Role } from './db';
 
 const SECTION_KEY: Record<Section, string> = {
@@ -162,9 +162,33 @@ export function relativeTime(iso: string | null, locale: Locale): string {
   return rtf.format(Math.round(diffSec / 86400), 'day');
 }
 
+/**
+ * Tanggal + jam dalam WAKTU KANTOR, bukan waktu server.
+ *
+ * Fungsi Vercel berjalan di UTC, dan `Intl.DateTimeFormat` tanpa `timeZone`
+ * memakai zona waktu proses — jadi jam yang tercetak tujuh jam lebih awal dari
+ * jam di dinding. Akibatnya satu kalimat menyebut dua waktu yang saling
+ * bertentangan:
+ *
+ *   🔴 PC offline sejak 6 Agu 2026, 06.47 (2 menit lalu).
+ *
+ * Yang salah justru angka mutlaknya — dan angka itulah yang dipakai orang untuk
+ * menyimpulkan "berarti sudah mati sejak sebelum saya datang", keliru tujuh jam,
+ * untuk PC yang baru saja terlihat. Kegagalan yang tidak terlihat sebagai
+ * kegagalan: tidak ada error, cuma angka yang meyakinkan dan salah.
+ *
+ * Offsetnya sama dengan yang sudah dipakai `startOfLocalDay` untuk hitungan
+ * "selesai hari ini" — satu sumber, supaya keduanya tidak bisa menyimpang.
+ */
 export function absoluteTime(iso: string, locale: Locale): string {
+  const shifted = new Date(new Date(iso).getTime() + UTC_OFFSET_MINUTES * 60_000);
   return new Intl.DateTimeFormat(locale === 'id' ? 'id-ID' : 'en-GB', {
     dateStyle: 'medium',
     timeStyle: 'short',
-  }).format(new Date(iso));
+    // Offset kantor sudah dijumlahkan ke dalam nilainya, jadi yang diformat
+    // WAJIB dibaca sebagai UTC. Tanpa ini zona waktu proses ikut ditambahkan
+    // untuk kedua kalinya — benar di laptop yang kebetulan WIB, salah dua kali
+    // di Vercel.
+    timeZone: 'UTC',
+  }).format(shifted);
 }

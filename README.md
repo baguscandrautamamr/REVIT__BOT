@@ -66,7 +66,8 @@ addin/                DLL siap pasang ada di tab Actions → workflow "addin"
   App.cs            OnStartup: buat ExternalEvent, start worker
   Polling/          loop polling — TANPA Revit API
   Events/           IExternalEventHandler — main thread
-  Commands/         /levels /sheets /warnings /count /tray /find /pdf /schedule
+  Commands/         14 command + ViewFinder/LevelResolver/Layout (aturan bersama)
+  Services/         BridgeClient (HTTP), DialogSuppressor, TokenStore, Log
   set-token.ps1     simpan machine token terenkripsi DPAPI
 web/
   index.html        panel / Telegram Mini App
@@ -76,12 +77,17 @@ web/
   i18n.js           bahasa panel: id | en | auto
   app.js            perakitan + render
 supabase/
-  migrations/001_init.sql
+  migrations/001_init.sql     tabel + machine_state
+  migrations/002_security.sql RLS — service role saja
+  migrations/003_storage.sql  catatan bucket job-files (bucket-nya dibuat server)
 scripts/
   deploy-bot.ps1    clone + npm ci + deploy konfigurasi bot (Windows)
   set-commands.ts   pasang webhook + menu Telegram per bahasa + scope admin
   check-i18n.ts     penjaga konsistensi katalog
   check-commands.ts penjaga sinkronisasi daftar command panel ↔ server
+  check-runtime.ts  penjaga format modul: emit CJS/ESM harus sepakat dengan
+                    api/package.json, kalau tidak SEMUA endpoint mati
+  simulate-job.ts   jalankan seluruh jalur hasil job di atas Supabase tiruan
 docs/
 ```
 
@@ -136,20 +142,25 @@ tampilan.
 | Dua bahasa + dua tema | Lengkap, `check-i18n` hijau |
 | Panel web / Mini App | Lengkap, dirender & diuji di Chromium |
 | Add-in Revit | Ditulis lengkap, **belum dikompilasi terhadap `RevitAPI.dll` asli** |
-| Command di add-in | 8 dari 17 jalan — lihat tabel di bawah |
+| Command di add-in | 14 dari 17 jalan — lihat tabel di bawah |
 
 ### Command yang sudah ada di add-in
 
-`/levels` `/sheets` `/warnings` `/count` `/tray` `/find` `/pdf` `/schedule`
+`/levels` `/sheets` `/warnings` `/count` `/tray` `/find` `/panel` `/load`
+`/pdf` `/png` `/dwg` `/ifc` `/nwc` `/schedule`
 
 ### Yang belum, dan kenapa
 
 | Command | Yang menghalangi |
 |---|---|
-| `/panel` `/load` | Butuh API kelistrikan (`ElectricalSystem`, panel schedule). Nama parameter beban berbeda antar template — perlu dicocokkan dengan model asli dulu, menebaknya hanya menghasilkan angka yang salah tanpa terlihat salah. |
-| `/png` `/dwg` | Opsi export-nya banyak dan mudah meleset (skala, layer mapping). Polanya sama dengan `ExportPdfCommand`. |
-| `/nwc` `/ifc` | Perlu exporter Navisworks / IFC terpasang di PC-nya. |
 | `/setparam` `/tag` `/dynamo` | Menunggu alur konfirmasi dua langkah di server (`onCallback` di `webhook.ts` masih kosong untuk `confirm:`). Modifikasi tanpa konfirmasi sengaja tidak dibuka. |
+
+Tiga yang sudah ada tapi bergantung pada hal di luar Revit sendiri:
+
+| Command | Yang perlu diketahui |
+|---|---|
+| `/nwc` | Butuh add-in **Navisworks Exporters** terpasang di PC Revit — formatnya ditulis add-in Autodesk terpisah, bukan Revit. Kalau belum ada, `/nwc` menjawab dengan kalimat yang menyebutkan itu, bukan exception. |
+| `/panel` `/load` | Angkanya dibaca dari parameter beban model (`RBS_ELEC_APPARENT_LOAD`, `ElectricalSystem`). Elemen yang parameternya kosong DILEWATI dan dihitung terpisah — nol yang tidak dijelaskan akan dikira beban yang memang nol. |
 
 Command yang belum ada di add-in tetap dijawab ("belum diimplementasi"), bukan
 menggantung. Mulai dari `/status`: command kecil itu membuktikan seluruh rantai
@@ -160,10 +171,19 @@ Telegram → Vercel → Supabase → polling → `ExternalEvent` → balik.
 ## Pemeriksaan sebelum deploy
 
 ```bash
-npm run check     # typecheck + katalog dua bahasa + sinkronisasi daftar command panel
+npm run check     # lima pemeriksaan, berhenti di yang pertama gagal
 ```
 
-Ketiganya juga jalan otomatis di GitHub Actions (`.github/workflows/check.yml`).
+| Pemeriksaan | Yang dijaga |
+|---|---|
+| `typecheck` | root + `api/` |
+| `check:i18n` | katalog ID/EN: key, placeholder, batas panjang Telegram |
+| `check:commands` | daftar command panel web ↔ server, termasuk penanda "belum jalan" |
+| `check:runtime` | format modul fungsi Vercel — kalau menyimpang, SEMUA endpoint mati |
+| `simulate` | seluruh jalur hasil job di atas Supabase + Telegram tiruan |
+
+Kelimanya juga jalan otomatis di GitHub Actions (`.github/workflows/check.yml`).
 Semuanya menangkap kerusakan yang TIDAK menimbulkan error saat runtime: key
-terjemahan yang hilang diam-diam jatuh ke Bahasa Indonesia, dan daftar command
-di panel yang menyimpang hanya menampilkan lebih sedikit tombol.
+terjemahan yang hilang diam-diam jatuh ke Bahasa Indonesia, daftar command di
+panel yang menyimpang hanya menampilkan lebih sedikit tombol, dan berkas hasil
+yang tidak pernah sampai cuma terlihat sebagai "⏳" yang tidak berubah.

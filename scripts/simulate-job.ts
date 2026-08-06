@@ -29,6 +29,7 @@
  *   8. Objek persinggahan selalu dihapus sesudahnya
  *   9. upload-url menolak token/job palsu, dan nama berkas tidak bisa kabur
  *      dari bucket lewat "../"
+ *  10. Jam di balasan memakai waktu kantor — bukan jam UTC milik Vercel
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -587,6 +588,46 @@ async function main() {
       typeof (h.body as { supabaseKeyKind?: string }).supabaseKeyKind === 'string',
       String((h.body as { supabaseKeyKind?: string }).supabaseKeyKind),
     );
+  }
+
+  console.log('\n10. Jam di balasan memakai waktu kantor, bukan waktu server');
+  {
+    // Fungsi Vercel berjalan di UTC. Selama `absoluteTime` tidak menyebut zona
+    // waktunya, jam yang tercetak adalah jam UTC — dan /status membacanya
+    // sebagai jam dinding. Satu kalimat lalu menyebut dua waktu yang saling
+    // bertentangan: "PC offline sejak 6 Agu 2026, 06.47 (2 menit lalu)", untuk
+    // PC yang baru saja terlihat. Tidak ada error, tidak ada log, cuma angka
+    // yang meyakinkan dan keliru tujuh jam.
+    //
+    // Zona waktu proses SENGAJA digeser-geser di sini. Versi yang salah lulus
+    // di laptop yang kebetulan sudah WIB dan gagal hanya di produksi; dengan
+    // TZ yang berpindah, versi yang salah gagal di mana pun ia dijalankan.
+    const { statusText, absoluteTime } = await import('../api/_lib/reply');
+
+    const seen = '2026-08-06T13:47:00.000Z'; // 20.47 WIB
+    const tzBefore = process.env.TZ;
+
+    process.env.TZ = 'UTC';
+    const asUtc = absoluteTime(seen, 'id');
+    process.env.TZ = 'America/New_York';
+    const asNewYork = absoluteTime(seen, 'id');
+    process.env.TZ = tzBefore;
+
+    check('offset kantor dipakai (bukan jam UTC)', asUtc.includes('20.47'), asUtc);
+    check('zona waktu server tidak mengubah hasilnya', asUtc === asNewYork,
+      `${asUtc} vs ${asNewYork}`);
+
+    // Kalimat lengkapnya: yang mutlak dan yang relatif harus sepakat.
+    const text = statusText(
+      'id',
+      {
+        id: 1, last_seen_at: seen, active_doc: null, revit_version: null,
+        addin_version: null, is_paused: false, bot_enabled: true,
+      },
+      { pending: [], running: [] },
+    );
+    check('/status menyebut jam kantor di kalimat "offline sejak"',
+      text.includes('20\\.47'), text.split('\n')[2] ?? text);
   }
 
   server.close();
