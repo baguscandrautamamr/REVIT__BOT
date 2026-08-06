@@ -341,6 +341,11 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
     case 'ifc':
       return { payload: {} };
 
+    // Daftar view 3D. Argumennya menyaring per nama; `--all` menampilkan
+    // seluruh jenis view, bukan cuma yang 3D.
+    case 'views':
+      return { payload: { filter: joined || null, all: flags.includes('all') } };
+
     // Argumennya, kalau ada, menyaring per discipline: `/series F_UTILITY`.
     // `--detail` menambahkan nomor + nama tiap sheet di dalam grupnya.
     case 'series':
@@ -416,9 +421,12 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
     // Satu view saja, jadi seluruh token digabung — nama view hampir selalu
     // mengandung spasi ("GROUND & FIRST FLOOR - LIGHTING"), dan tidak ada
     // argumen kedua yang bisa direbut oleh penggabungan itu.
+    // Boleh TANPA argumen: add-in menjawabnya dengan daftar view 3D yang ada.
+    // Nama view di proyek nyata tidak bisa ditebak dan hanya tertulis di browser
+    // tree Revit, jadi "argumen kurang" adalah jawaban yang benar untuk
+    // pertanyaan yang salah — yang dibutuhkan orangnya justru daftar itu.
     case 'png':
-      if (!joined) return { error: t('errors.missingArgs', { example }) };
-      return { payload: { view: joined, views: [joined] } };
+      return { payload: { view: joined || null, views: joined ? [joined] : [], only3d: flags.includes('3d') } };
 
     case 'schedule':
       if (!joined) return { error: t('errors.missingArgs', { example }) };

@@ -288,6 +288,8 @@ Kolom **Alias**: bisa diketik sebagai ganti nama kanonik.
 | `/status` | — | viewer | — | PC online/offline, model terbuka, versi Revit + add-in, ringkasan antrean |
 | `/levels` | `/lantai`, `/level` | viewer | — | Daftar level beserta elevasi. Pakai ini untuk tahu nama persis sebelum `/count` |
 | `/sheets` | `/lembar` | viewer | `[filter]` | Daftar sheet + revisi terakhir. Filter opsional mencocokkan nomor/nama |
+| `/series` | `/seri`, `/grup` | viewer | `[discipline]` | Grup sheet (`ACT SHEET SERIES`) + jumlah + baris `/pdf --series` siap salin. `--detail` menambahkan nomor & nama tiap sheet |
+| `/views` | `/view`, `/tampilan` | viewer | `[filter]` | Nama view 3D + baris `/png` siap salin. `--all` menampilkan semua jenis view (sheet, denah, drafting) |
 | `/warnings` | `/peringatan` | viewer | — | Jumlah warning aktif + 10 teratas |
 | `/queue` | `/antrean`, `/antrian` | viewer | — | Antrean saat ini beserta posisi command milikmu |
 | `/help` | `/bantuan` | viewer | — | Daftar command sesuai role, dalam bahasa aktif |
@@ -320,7 +322,7 @@ Sekuriti       → OST_SecurityDevices
 | Command | Role | Contoh | Catatan |
 |---|---|---|---|
 | `/pdf` | viewer (maks 10 sheet) | `/pdf LP-01 LP-02` | Skala presisi 1:1 — setelan wajibnya di §10 |
-| `/png` | viewer | `/png 3D-ELEC` | Cepat, cocok untuk progress check |
+| `/png` | viewer | `/png` · `/png --3d` · `/png "E-LIGHTING FIXTURES"` | Cepat, cocok untuk progress check. Tanpa argumen = daftar view 3D yang ada; `--3d` membatasi pencarian ke View3D saja |
 | `/schedule` | viewer | `/schedule PANEL-SCH` | CSV dari `ViewSchedule.Export()` |
 | `/dwg` | admin | `/dwg E-101` | Memakai export setup yang tersimpan di model |
 | `/nwc` | admin | `/nwc` | Untuk Navisworks |

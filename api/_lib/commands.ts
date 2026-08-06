@@ -48,6 +48,19 @@ export function notImplemented(spec: CommandSpec): boolean {
  *   - scripts/set-commands.ts (menu Telegram, per bahasa)
  *   - docs/TELEGRAM-BOT-GUIDE.*.md (dijaga sinkron manual)
  *
+ * MENAMBAH COMMAND DI SINI TIDAK MENGUBAH MENU "/" DI TELEGRAM.
+ *
+ * Menu itu disimpan di sisi Telegram, dipasang lewat `setMyCommands`, dan hanya
+ * berubah kalau ada yang memasangnya ulang:
+ *
+ *   buka  https://<domain>/api/admin/setup?secret=<TELEGRAM_WEBHOOK_SECRET>
+ *   atau  npx tsx scripts/set-commands.ts
+ *
+ * Lupa langkah ini tidak menimbulkan error apa pun: command-nya BEKERJA kalau
+ * diketik manual, ia hanya tidak muncul di daftar saat orang mengetik "/". Dan
+ * karena yang hilang cuma saran pengetikan, tidak ada yang menyadarinya — sampai
+ * ada yang bertanya kenapa command yang katanya sudah jadi tidak ada di botnya.
+ *
  * Nama command sengaja tetap Bahasa Inggris di semua locale: itu yang
  * dikenali menu Telegram lintas bahasa. Yang diterjemahkan adalah
  * DESKRIPSI-nya (lewat `setMyCommands(language_code)`) dan balasannya.
@@ -71,6 +84,16 @@ export const COMMANDS: CommandSpec[] = [
     name: 'series', role: 'viewer', section: 'info', inMenu: true, addin: true,
     aliases: { id: ['seri', 'grup'] },
     usage: { id: '/series · /series D_FINISHED GOOD WAREHOUSE', en: '/series · /series D_FINISHED GOOD WAREHOUSE' },
+  },
+  // Pasangan /series untuk view, dengan alasan yang sama: nama view 3D hanya
+  // tertulis di browser tree Revit. Daftar itu memang sudah muncul saat /png
+  // gagal, tapi mengandalkan kegagalan untuk mendapat informasi berarti orangnya
+  // harus salah dulu sebelum boleh tahu — dan ia tidak punya cara menebak kata
+  // apa yang harus diketik supaya gagalnya cukup informatif.
+  {
+    name: 'views', role: 'viewer', section: 'info', inMenu: true, addin: true,
+    aliases: { id: ['view', 'tampilan'] },
+    usage: { id: '/views · /views --all · /views LIGHTING', en: '/views · /views --all · /views LIGHTING' },
   },
   { name: 'warnings', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['peringatan'] } },
   { name: 'queue', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['antrean', 'antrian'] } },
@@ -99,7 +122,14 @@ export const COMMANDS: CommandSpec[] = [
       en: '/pdf LP-01 LP-02 · /pdf --series "GENERAL-LV"',
     },
   },
-  { name: 'png', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/png 3D-ELEC', en: '/png 3D-ELEC' } },
+  // Contoh usage-nya sengaja TIDAK menyebut nama view karangan. Versi
+  // sebelumnya menulis "/png 3D-ELEC" — nama yang tidak ada di model mana pun,
+  // saya karang sendiri — dan orang yang menyalinnya apa adanya dijawab "view
+  // tidak ditemukan" untuk kesalahan yang bukan miliknya.
+  {
+    name: 'png', role: 'viewer', section: 'export', inMenu: true, addin: true,
+    usage: { id: '/png · /png --3d', en: '/png · /png --3d' },
+  },
   { name: 'schedule', role: 'viewer', section: 'export', inMenu: true, addin: true, usage: { id: '/schedule PANEL-SCH', en: '/schedule PANEL-SCH' } },
   {
     name: 'dwg', role: 'admin', section: 'export', inMenu: false, addin: true,
@@ -149,7 +179,7 @@ export function parseCommand(text: string): { spec: CommandSpec | null; raw: str
  * satu tanda hubung tunggal dimaksudkan sebagai flag — lihat `flagName`.
  */
 export const KNOWN_FLAGS = new Set([
-  'series', 'disc', 'discipline', 'groups', 'grup', 'detail',
+  'series', 'disc', 'discipline', 'groups', 'grup', 'detail', '3d', 'all',
 ]);
 
 /**

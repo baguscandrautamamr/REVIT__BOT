@@ -738,6 +738,41 @@ async function main() {
       (seriesDetail?.payload as Record<string, unknown>)?.detail === true,
       JSON.stringify(seriesDetail?.payload));
 
+    // /views: pasangan /series untuk view. Tanpa flag apa pun, dan bisa
+    // ditekan dari menu "/" Telegram.
+    const views = await typed('/views', 15);
+    check('/views meminta daftar view 3D',
+      views !== undefined && (views.payload as Record<string, unknown>)?.all === false,
+      JSON.stringify(views?.payload));
+
+    const viewsAll = await typed('/view —all', 16);
+    check('alias /view + --all lewat em dash',
+      (viewsAll?.payload as Record<string, unknown>)?.all === true,
+      JSON.stringify(viewsAll?.payload));
+
+    const viewsFilter = await typed('/tampilan LIGHTING', 17);
+    check('alias /tampilan + saringan nama',
+      (viewsFilter?.payload as Record<string, unknown>)?.filter === 'LIGHTING',
+      JSON.stringify(viewsFilter?.payload));
+
+    // /png tanpa argumen BUKAN kesalahan: nama view 3D tidak bisa ditebak dan
+    // hanya tertulis di browser tree Revit, jadi yang dibutuhkan orangnya adalah
+    // daftarnya — bukan balasan "argumen kurang".
+    const pngBare = await typed('/png', 12);
+    check('/png tanpa argumen tetap diantre, bukan ditolak server',
+      pngBare !== undefined && (pngBare.payload as Record<string, unknown>)?.view === null,
+      JSON.stringify(pngBare?.payload));
+
+    const png3d = await typed('/png —3d', 13);
+    check('--3d membatasi pencarian ke View3D, lewat em dash sekalipun',
+      (png3d?.payload as Record<string, unknown>)?.only3d === true,
+      JSON.stringify(png3d?.payload));
+
+    const pngNamed = await typed('/png "E-LIGHTING FIXTURES"', 14);
+    check('nama view berspasi tetap utuh sebagai satu nama',
+      (pngNamed?.payload as Record<string, unknown>)?.view === 'E-LIGHTING FIXTURES',
+      JSON.stringify(pngNamed?.payload));
+
     // Yang TIDAK boleh berubah: tanda hubung ada di hampir setiap nomor sheet,
     // jadi nomor sheet tidak boleh ikut terbaca sebagai flag.
     const sheetish = await typed('/pdf -EP-1101 ME-F-EL-0000', 8);

@@ -160,6 +160,7 @@ export const id = {
     levels: 'Daftar level di model',
     sheets: 'Daftar sheet + revisi terakhir',
     series: 'Daftar grup sheet + perintah export siap salin',
+    views: 'Daftar view 3D + perintah /png siap salin',
     warnings: 'Warning aktif di model',
     queue: 'Antrean command saat ini',
     help: 'Daftar command sesuai role kamu',

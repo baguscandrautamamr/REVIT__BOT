@@ -14,6 +14,15 @@ on:
   push:
     branches: ['**']
   pull_request:
+  # Bisa dijalankan manual dari tab Actions.
+  #
+  # Ditambahkan setelah GitHub berhenti membuat run dari event `push` selama
+  # beberapa jam: `addin.yml` masih bisa dipicu tangan karena punya baris ini,
+  # sementara pemeriksaan server sama sekali tidak bisa dijalankan — satu-satunya
+  # penjaga yang tersisa jadi ingatan orang. Tombol yang cuma berguna sekali
+  # setahun tetap lebih murah daripada tidak punya jalan sama sekali saat
+  # dibutuhkan.
+  workflow_dispatch:
 
 jobs:
   check:
@@ -28,5 +37,6 @@ jobs:
 
       - run: npm ci
 
-      # typecheck + i18n + daftar command panel + format modul + simulasi job
+      # typecheck + i18n + daftar command panel + format modul + sumber add-in
+      # + simulasi job
       - run: npm run check

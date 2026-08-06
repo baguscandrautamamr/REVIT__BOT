@@ -9,8 +9,9 @@
     "check:i18n": "tsx scripts/check-i18n.ts",
     "check:commands": "tsx scripts/check-commands.ts",
     "check:runtime": "tsx scripts/check-runtime.ts",
+    "check:addin": "tsx scripts/check-addin.ts",
     "set-commands": "tsx scripts/set-commands.ts",
-    "check": "npm run typecheck && npm run check:i18n && npm run check:commands && npm run check:runtime && npm run simulate",
+    "check": "npm run typecheck && npm run check:i18n && npm run check:commands && npm run check:runtime && npm run check:addin && npm run simulate",
     "simulate": "tsx scripts/simulate-job.ts"
   },
   "devDependencies": {

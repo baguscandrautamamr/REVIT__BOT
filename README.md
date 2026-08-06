@@ -66,7 +66,7 @@ addin/                DLL siap pasang ada di tab Actions → workflow "addin"
   App.cs            OnStartup: buat ExternalEvent, start worker
   Polling/          loop polling — TANPA Revit API
   Events/           IExternalEventHandler — main thread
-  Commands/         14 command + ViewFinder/LevelResolver/Layout (aturan bersama)
+  Commands/         16 command + ViewFinder/SheetGroups/Layout (aturan bersama)
   Services/         BridgeClient (HTTP), DialogSuppressor, TokenStore, Log
   set-token.ps1     simpan machine token terenkripsi DPAPI
 web/
@@ -101,11 +101,19 @@ Sheet di proyek nyata sudah dikelompokkan lewat parameter proyek — di sini
 atas pengelompokan itu, jadi tidak ada yang perlu mengetik 18 nomor sheet:
 
 ```bash
+/views                        # nama view 3D apa saja + perintah /png siap salin
 /series                       # grup apa saja yang ada + perintah siap salin
 /series --detail              # sama, plus nomor & nama tiap sheet
 /pdf --series "GENERAL-LV"    # satu grup → SATU PDF, dinamai menurut grupnya
 /pdf --disc F_UTILITY         # seluruh discipline → satu PDF PER series, di-zip
 ```
+
+> **Setelah menambah command apa pun, menu `/` Telegram harus dipasang ulang.**
+> Menu itu disimpan di sisi Telegram, bukan dibaca dari kode — buka
+> `https://<domain>/api/admin/setup?secret=<TELEGRAM_WEBHOOK_SECRET>` sekali, lalu
+> tutup-buka aplikasi Telegram (klien meng-cache daftarnya). Command yang belum
+> terdaftar TETAP BEKERJA kalau diketik manual; ia hanya tidak muncul di saran
+> pengetikan — kegagalan yang tidak menimbulkan error dan karena itu mudah lolos.
 
 Mulai dari `/series`. Nama grup hanya tertulis di browser tree Revit — di PC —
 sementara yang meminta gambarnya sedang memegang HP; tanpa command itu, `--series`
@@ -231,7 +239,7 @@ Telegram → Vercel → Supabase → polling → `ExternalEvent` → balik.
 ## Pemeriksaan sebelum deploy
 
 ```bash
-npm run check     # lima pemeriksaan, berhenti di yang pertama gagal
+npm run check     # enam pemeriksaan, berhenti di yang pertama gagal
 ```
 
 | Pemeriksaan | Yang dijaga |
@@ -240,9 +248,10 @@ npm run check     # lima pemeriksaan, berhenti di yang pertama gagal
 | `check:i18n` | katalog ID/EN: key, placeholder, batas panjang Telegram |
 | `check:commands` | daftar command panel web ↔ server, termasuk penanda "belum jalan" |
 | `check:runtime` | format modul fungsi Vercel — kalau menyimpang, SEMUA endpoint mati |
+| `check:addin` | sumber C# add-in: byte NUL, kurung tidak berimbang, `using` yang hilang. BUKAN compiler — yang menentukan tetap workflow `addin` |
 | `simulate` | seluruh jalur hasil job di atas Supabase + Telegram tiruan |
 
-Kelimanya juga jalan otomatis di GitHub Actions (`.github/workflows/check.yml`).
+Keenamnya juga jalan otomatis di GitHub Actions (`.github/workflows/check.yml`).
 Semuanya menangkap kerusakan yang TIDAK menimbulkan error saat runtime: key
 terjemahan yang hilang diam-diam jatuh ke Bahasa Indonesia, daftar command di
 panel yang menyimpang hanya menampilkan lebih sedikit tombol, dan berkas hasil

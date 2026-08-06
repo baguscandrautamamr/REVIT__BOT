@@ -287,6 +287,8 @@ Re-run it whenever `api/_lib/commands.ts` or an i18n catalog changes.
 | `/status` | — | viewer | — | PC online/offline, open model, Revit + add-in version, queue summary |
 | `/levels` | `/lantai`, `/level` | viewer | — | Levels with elevations. Use it to learn exact names before `/count` |
 | `/sheets` | `/lembar` | viewer | `[filter]` | Sheets + latest revision. Optional filter matches number/name |
+| `/series` | `/seri`, `/grup` | viewer | `[discipline]` | Sheet groups (`ACT SHEET SERIES`) + counts + ready-to-copy `/pdf --series` lines. `--detail` adds each sheet number & name |
+| `/views` | `/view`, `/tampilan` | viewer | `[filter]` | 3D view names + ready-to-copy `/png` lines. `--all` shows every view type (sheets, plans, drafting) |
 | `/warnings` | `/peringatan` | viewer | — | Active warning count + top 10 |
 | `/queue` | `/antrean` | viewer | — | Current queue including your position |
 | `/help` | `/bantuan` | viewer | — | Commands for your role, in your active language |
@@ -319,7 +321,7 @@ Security       → OST_SecurityDevices
 | Command | Role | Example | Notes |
 |---|---|---|---|
 | `/pdf` | viewer (max 10 sheets) | `/pdf LP-01 LP-02` | True 1:1 scale — required settings in §10 |
-| `/png` | viewer | `/png 3D-ELEC` | Fast, good for a progress check |
+| `/png` | viewer | `/png` · `/png --3d` · `/png "E-LIGHTING FIXTURES"` | Fast, good for a progress check. No argument = list the 3D views; `--3d` restricts the search to View3D only |
 | `/schedule` | viewer | `/schedule PANEL-SCH` | CSV via `ViewSchedule.Export()` |
 | `/dwg` | admin | `/dwg E-101` | Uses the export setup saved in the model |
 | `/nwc` | admin | `/nwc` | For Navisworks |

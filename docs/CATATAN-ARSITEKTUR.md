@@ -114,7 +114,7 @@ Security       → OST_SecurityDevices
 | Command | Role | Catatan |
 |---|---|---|
 | `/pdf LP-01 LP-02` | viewer (maks 10 sheet) | Presisi 1:1 |
-| `/png 3D-ELEC` | viewer | Cepat, enak buat progress check |
+| `/png` | viewer | Cepat, enak buat progress check. Tanpa argumen = daftar view 3D |
 | `/dwg E-101` | admin | Ikut export setup tersimpan |
 | `/nwc` | admin | Untuk Navisworks |
 | `/ifc` | admin | Lambat, 5–15 menit |

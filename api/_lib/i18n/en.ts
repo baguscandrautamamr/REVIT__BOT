@@ -152,6 +152,7 @@ export const en = {
     levels: 'List levels in the model',
     sheets: 'List sheets + latest revision',
     series: 'Sheet groups + ready-to-copy export commands',
+    views: '3D views + ready-to-copy /png commands',
     warnings: 'Active model warnings',
     queue: 'Current command queue',
     help: 'Commands available to your role',
