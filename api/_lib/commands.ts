@@ -33,7 +33,7 @@ export interface CommandSpec {
 /** Command yang dijawab server sendiri, tanpa menyentuh Revit. */
 export const SERVER_SIDE = new Set([
   'help', 'status', 'queue', 'lang', 'theme', 'panelapp',
-  'users', 'pause', 'resume', 'cancel', 'project',
+  'users', 'pause', 'resume', 'cancel', 'project', 'active',
 ]);
 
 /** Butuh Revit, tapi add-in belum punya implementasinya. */
@@ -123,6 +123,16 @@ export const COMMANDS: CommandSpec[] = [
     name: 'project', role: 'viewer', section: 'info', inMenu: true,
     aliases: { id: ['proyek', 'file'] },
     usage: { id: '/project · /project WAREHOUSE', en: '/project · /project WAREHOUSE' },
+  },
+  // Hanya MELIHAT, lintas PC. Sengaja terpisah dari /project, yang MEMILIH dan
+  // karenanya hanya boleh menyentuh PC milik user itu sendiri.
+  //
+  // Tidak butuh PC yang jelas — lihat `needsMachine`. Itu justru gunanya di
+  // keadaan yang paling membingungkan: user yang belum dipasangkan admin bisa
+  // melihat apa saja yang ada, lalu menyebut yang ia butuh, alih-alih menebak.
+  {
+    name: 'active', role: 'viewer', section: 'info', inMenu: true,
+    aliases: { id: ['aktif'] },
   },
   { name: 'queue', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['antrean', 'antrian'] } },
   // `/start` dikirim otomatis oleh tombol START Telegram saat chat pertama

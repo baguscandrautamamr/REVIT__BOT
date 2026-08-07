@@ -67,31 +67,57 @@ export interface MachineState {
 }
 
 /**
- * Migrasi 004 (pilihan project per user) sudah dijalankan atau belum.
+ * Penanda "migrasi ini sudah dijalankan atau belum".
  *
- * Diperiksa, bukan diasumsikan. Kolom yang belum ada membuat PostgREST menolak
- * SELURUH request — bukan cuma bagian yang menyentuhnya — jadi tanpa
+ * Diperiksa, bukan diasumsikan. Kolom atau tabel yang belum ada membuat PostgREST
+ * menolak SELURUH request — bukan cuma bagian yang menyentuhnya — jadi tanpa
  * pemeriksaan ini satu langkah SQL yang terlewat mematikan `/claim`, dan
  * bersamanya seluruh bot. Repo ini sudah pernah kehilangan `003_storage.sql`
  * dengan cara yang sama.
  *
- * Hasilnya di-cache: kolomnya tidak akan muncul dan hilang di tengah jalan, dan
- * memeriksanya tiap 4 detik hanya menambah satu request ke setiap heartbeat.
+ * ── Dua jawaban, dua aturan cache, dan bedanya sudah memakan waktu nyata ──
+ *
+ * `true` di-cache SELAMANYA: kolom yang sudah ada tidak akan hilang.
+ *
+ * `false` KEDALUWARSA setelah satu menit. Versi pertama men-cache-nya selamanya
+ * juga, dengan alasan "kolomnya tidak akan muncul dan hilang di tengah jalan" —
+ * dan alasan itu salah tepat pada satu saat yang paling penting: DETIK MIGRASINYA
+ * DIJALANKAN. Instance fungsi yang sudah hangat sebelum itu menyimpan `false`
+ * dan tidak pernah memeriksa lagi, jadi migrasi yang sudah benar-benar jalan
+ * tetap terbaca "belum" sampai ada redeploy. Yang terlihat dari luar: PC yang
+ * tokennya sudah dipasang tetap dijawab 401, tanpa satu pun petunjuk ke arah
+ * sini. Itu benar-benar terjadi, dan biayanya satu jam penelusuran.
+ *
+ * Memeriksa ulang tiap menit menambah dua request per menit per instance —
+ * dibanding satu jam salah diagnosa, itu tidak ada artinya.
  */
-let projectColumns: boolean | null = null;
+function migrationFlag(warning: string, probe: () => Promise<unknown>) {
+  let ready = false;
+  let lastCheck = 0;
 
-export async function projectSelectionReady(): Promise<boolean> {
-  if (projectColumns !== null) return projectColumns;
-  try {
+  return async function check(): Promise<boolean> {
+    if (ready) return true;
+    if (Date.now() - lastCheck < 60_000) return false;
+
+    lastCheck = Date.now();
+    try {
+      await probe();
+      ready = true;
+    } catch {
+      console.warn(`[db] ${warning}`);
+    }
+    return ready;
+  };
+}
+
+/** Migrasi 004 — pilihan project per user. */
+export const projectSelectionReady = migrationFlag(
+  'migrasi 004 belum dijalankan — pilihan project dimatikan',
+  async () => {
     await rest('machine_state?id=eq.1&limit=1&select=open_docs');
     await rest('bot_users?limit=1&select=project');
-    projectColumns = true;
-  } catch {
-    console.warn('[db] migrasi 004 belum dijalankan — pilihan project dimatikan');
-    projectColumns = false;
-  }
-  return projectColumns;
-}
+  },
+);
 
 async function rest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${ENV.supabaseUrl}/rest/v1/${path}`, {
@@ -200,58 +226,37 @@ export interface Machine {
   addin_version: string | null;
   is_paused: boolean;
   created_at: string;
+  /**
+   * Boleh muncul di `/active` milik user lain. Ada hanya setelah migrasi 007 —
+   * lihat `sharingReady`. Opsional di tipe ini karena `MACHINE_FIELDS` sengaja
+   * tidak memintanya; hanya jalur panel yang membacanya.
+   */
+  shared?: boolean;
 }
 
 const MACHINE_FIELDS =
   'id,name,is_active,last_seen_at,active_doc,open_docs,revit_version,addin_version,is_paused,created_at';
 
-/**
- * Migrasi 005 (tabel `machines`) sudah dijalankan atau belum.
- *
- * Diperiksa dengan alasan yang persis sama seperti `projectSelectionReady`, tapi
- * di jalur yang jauh lebih berbahaya: pencarian token dipanggil di SETIAP
- * /api/machine/claim. Tabel yang belum ada membuat PostgREST menjawab error, dan
- * kalau error itu dibiarkan naik, seluruh autentikasi mesin gagal — bukan cuma
- * fitur barunya. Bot yang tadinya sehat mati karena satu langkah SQL yang
- * memang OPSIONAL.
- */
-let machinesTable: boolean | null = null;
+/** Migrasi 005 — tabel `machines`. Dipanggil di jalur autentikasi tiap 4 detik. */
+export const machinesReady = migrationFlag(
+  'migrasi 005 belum dijalankan — daftar PC dimatikan, memakai MACHINE_TOKEN',
+  () => rest('machines?limit=1&select=id'),
+);
 
-export async function machinesReady(): Promise<boolean> {
-  if (machinesTable !== null) return machinesTable;
-  try {
-    await rest(`machines?limit=1&select=id`);
-    machinesTable = true;
-  } catch {
-    console.warn('[db] migrasi 005 belum dijalankan — daftar PC dimatikan, memakai MACHINE_TOKEN');
-    machinesTable = false;
-  }
-  return machinesTable;
-}
-
-/**
- * Migrasi 006 (routing per-PC) sudah dijalankan atau belum.
- *
- * Sama pentingnya seperti `machinesReady`, dan di jalur yang sama berbahayanya:
- * `machine_id` disebut dalam query klaim yang jalan tiap 4 detik. Kolom yang
- * belum ada membuat PostgREST menolak SELURUH request — bukan cuma bagian yang
- * menyentuhnya — jadi tanpa pemeriksaan ini satu langkah SQL yang terlewat
- * mematikan pengambilan job seluruhnya.
- */
-let routingColumns: boolean | null = null;
-
-export async function routingReady(): Promise<boolean> {
-  if (routingColumns !== null) return routingColumns;
-  try {
+/** Migrasi 006 — routing per-PC. */
+export const routingReady = migrationFlag(
+  'migrasi 006 belum dijalankan — routing per-PC dimatikan',
+  async () => {
     await rest('bot_users?limit=1&select=machine_id');
     await rest('commands?limit=1&select=machine_id');
-    routingColumns = true;
-  } catch {
-    console.warn('[db] migrasi 006 belum dijalankan — routing per-PC dimatikan');
-    routingColumns = false;
-  }
-  return routingColumns;
-}
+  },
+);
+
+/** Migrasi 007 — penanda PC boleh terlihat user lain. */
+export const sharingReady = migrationFlag(
+  'migrasi 007 belum dijalankan — /active hanya menampilkan PC sendiri',
+  () => rest('machines?limit=1&select=shared'),
+);
 
 /**
  * Keadaan SATU PC, dari mana pun sumbernya.
@@ -343,6 +348,34 @@ export async function createMachine(name: string, tokenHash: string): Promise<Ma
  * `setUserActive`: barisnya adalah catatan PC mana yang pernah ada, dan
  * menghapusnya membuat token yang sama bisa didaftarkan lagi tanpa jejak.
  */
+/**
+ * PC yang boleh MUNCUL di `/active` milik user lain.
+ *
+ * `shared` sengaja TIDAK dimasukkan ke `MACHINE_FIELDS`. Daftar kolom itu dipakai
+ * juga oleh `findMachineByTokenHash`, yang berjalan di jalur autentikasi tiap 4
+ * detik — dan menyebut kolom yang belum ada membuat PostgREST menolak seluruh
+ * request. Jadi kalau migrasi 007 terlewat, yang mati akan bukan fitur barunya
+ * melainkan SELURUH pengambilan job. Dipisah begini, jalur autentikasi tidak
+ * pernah menyentuh kolom yang mungkin belum ada.
+ */
+export async function listSharedMachines(): Promise<Machine[]> {
+  if (!(await sharingReady())) return [];
+  return rest<Machine[]>(
+    `machines?shared=is.true&is_active=is.true&select=${MACHINE_FIELDS}&order=created_at.asc`,
+  );
+}
+
+/** Buka/tutup PC dari daftar `/active` orang lain. */
+export async function setMachineShared(id: string, shared: boolean): Promise<Machine | null> {
+  if (!(await sharingReady())) return null;
+  const rows = await rest<Machine[]>(`machines?id=eq.${id}&select=${MACHINE_FIELDS}`, {
+    method: 'PATCH',
+    headers: RETURNING,
+    body: JSON.stringify({ shared }),
+  });
+  return rows[0] ?? null;
+}
+
 export async function setMachineActive(id: string, active: boolean): Promise<Machine | null> {
   const rows = await rest<Machine[]>(`machines?id=eq.${id}&select=${MACHINE_FIELDS}`, {
     method: 'PATCH',

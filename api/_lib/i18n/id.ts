@@ -50,8 +50,8 @@ export const id = {
     // tanda di balasannya bahwa itu dari project yang salah.
     noMachine:
       'PC Revit kamu belum dipasangkan admin, dan sekarang ada lebih dari satu — ' +
-      'jadi bot tidak boleh menebak yang mana. Minta admin memasangkanmu lewat panel. ' +
-      'PC yang terdaftar:',
+      'jadi bot tidak boleh menebak yang mana. Ketik /aktif untuk melihat project yang ' +
+      'terbuka, lalu minta admin memasangkanmu ke PC-nya. PC yang terdaftar:',
     noDocument: 'Revit terbuka tapi belum ada model yang dibuka.',
     docMismatch: (p: Params) =>
       `Model tidak cocok. Yang terbuka sekarang: ${p.actual}`,
@@ -183,6 +183,25 @@ export const id = {
       'Sementara ini semua command tertuju ke project yang sedang aktif di Revit.',
   },
 
+  // /active — HANYA melihat. Perintah tetap menuju PC yang dipasangkan admin;
+  // daftar ini tidak memberi siapa pun kemampuan mengirim job ke PC orang lain.
+  active: {
+    title: '📂 Project yang sedang terbuka',
+    none:
+      'Belum ada PC Revit yang terdaftar. Minta admin mendaftarkannya lewat panel — ' +
+      'sampai itu ada, tidak ada project yang bisa ditampilkan.',
+    online: (p: Params) => `🟢 ${p.ago} lalu`,
+    offline: (p: Params) => `🔴 offline sejak ${p.since}`,
+    noDocs: '(Revit terbuka, belum ada model)',
+    // Kalimat penutupnya menyebut BATASNYA, bukan cuma caranya. Daftar yang bisa
+    // dilihat tapi tidak bisa dipilih akan terbaca sebagai tombol yang rusak
+    // kalau tidak dikatakan bahwa memang admin yang memindahkan.
+    hint:
+      '● sedang di layar · ○ terbuka juga\n' +
+      'Tanda › = PC yang melayanimu. Perintahmu selalu menuju ke sana.\n' +
+      'Butuh yang lain? Minta admin memindahkanmu — sebut nama PC-nya.',
+  },
+
   commandDesc: {
     status: 'Status PC, model terbuka, antrean',
     levels: 'Daftar level di model',
@@ -192,6 +211,7 @@ export const id = {
     warnings: 'Warning aktif di model',
     queue: 'Antrean command saat ini',
     project: 'Pilih project yang dituju command (multi-file)',
+    active: 'Lihat project yang terbuka di semua PC yang dibagikan',
     help: 'Daftar command sesuai role kamu',
     count: 'Rekap elemen MEP per lantai · --csv untuk ruangan, beban, circuit',
     tray: 'Panjang cable tray per lantai · --type per nama type',

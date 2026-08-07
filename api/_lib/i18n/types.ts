@@ -38,6 +38,7 @@ export interface Catalog {
   confirm: Record<string, Node>;
   admin: Record<string, Node>;
   project: Record<string, Node>;
+  active: Record<string, Node>;
   lang: Record<string, Node>;
   commandDesc: Record<string, string>;
 }

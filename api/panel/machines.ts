@@ -49,12 +49,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // mematikannya. Langkah SQL yang terlewat di repo ini pernah muncul
           // sebagai berkas yang tidak pernah sampai, bukan sebagai pesan.
           ready: await db.machinesReady(),
+          // Migrasi 007 — penanda "boleh dilihat user lain". Dilaporkan terpisah
+          // supaya panel bisa mematikan tombolnya dengan KALIMAT, bukan diam.
+          sharingReady: await db.sharingReady(),
           // PC yang masih memakai MACHINE_TOKEN dari environment tidak punya
           // baris di sini, jadi daftar yang kosong bukan berarti tidak ada PC.
           envFallback: Boolean(ENV.machineToken),
         });
       case 'POST':
         return await add(req, res);
+      case 'PATCH':
+        return await share(req, res);
       case 'DELETE':
         return await revoke(req, res);
       default:
@@ -86,6 +91,29 @@ async function add(req: VercelRequest, res: VercelResponse) {
   return res.status(200).json({ ok: true, machine: slim(machine), token });
 }
 
+/**
+ * Buka/tutup PC dari daftar `/active` orang lain.
+ *
+ * HANYA soal melihat. Ia tidak memberi siapa pun kemampuan mengirim perintah ke
+ * PC itu — job tetap diarahkan `bot_users.machine_id`, dan hanya admin yang bisa
+ * mengubahnya. Pembedaan itu yang membuat tombol ini murah: membuka daftar tidak
+ * bisa membekukan Revit siapa pun.
+ */
+async function share(req: VercelRequest, res: VercelResponse) {
+  if (!(await db.sharingReady())) return res.status(409).json({ error: 'needs_sharing_migration' });
+
+  const id = String(req.query.id ?? '');
+  if (!id) return res.status(400).json({ error: 'bad_id' });
+
+  const body = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})) as {
+    shared?: unknown;
+  };
+
+  const machine = await db.setMachineShared(id, body.shared === true);
+  if (!machine) return res.status(404).json({ error: 'not_found' });
+  return res.status(200).json({ ok: true, machine: slim(machine) });
+}
+
 async function revoke(req: VercelRequest, res: VercelResponse) {
   const id = String(req.query.id ?? '');
   if (!id) return res.status(400).json({ error: 'bad_id' });
@@ -104,5 +132,6 @@ function slim(m: db.Machine) {
     activeDoc: m.active_doc,
     revitVersion: m.revit_version,
     addinVersion: m.addin_version,
+    shared: m.shared === true,
   };
 }
