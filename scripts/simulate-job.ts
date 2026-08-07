@@ -1124,6 +1124,22 @@ async function main() {
     check('…dan PC lain tetap bekerja seperti biasa',
       (otherPc.body as { job?: { id?: string } }).job?.id === job2?.id,
       String((otherPc.body as { job?: { id?: string } }).job?.id));
+
+    // ── Belum dipasangkan TIDAK boleh mengunci seluruh bot ────────────────
+    // Jurang yang paling mudah dibuat di fitur ini, dan paling mungkin
+    // ditemui: begitu PC KEDUA didaftarkan, setiap user yang belum dipasangkan
+    // jadi "unassigned" — termasuk ADMIN, yang justru satu-satunya orang yang
+    // bisa memperbaikinya. Kalau /help ikut ditolak, bot terlihat rusak total
+    // tepat setelah admin melakukan hal yang benar.
+    await send(U3, '/help', 64);
+    check('user belum dipasangkan TETAP bisa /help',
+      sent.some((s) => s.text?.includes('daftar command')),
+      sent.map((s) => s.text?.slice(0, 40)).join(' | ').slice(0, 80));
+
+    await send(U3, '/status', 65);
+    check('…tapi /status tetap ditolak — isinya keadaan satu PC',
+      sent.some((s) => s.text?.includes('belum dipasangkan')),
+      sent.map((s) => s.text?.slice(0, 40)).join(' | ').slice(0, 80));
   }
 
   server.close();
