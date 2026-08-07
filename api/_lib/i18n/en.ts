@@ -46,8 +46,8 @@ export const en = {
     // the reply to mark that it came from the wrong project.
     noMachine:
       'An admin has not linked you to a Revit PC yet, and there is now more than one — ' +
-      'so the bot must not guess which. Ask an admin to link you from the panel. ' +
-      'Registered PCs:',
+      'so the bot must not guess which. Send /active to see which projects are open, ' +
+      'then ask an admin to link you to that PC. Registered PCs:',
     noDocument: 'Revit is running but no model is open yet.',
     docMismatch: (p: Params) => `Model mismatch. Currently open: ${p.actual}`,
     levelNotFound: (p: Params) =>
@@ -171,6 +171,22 @@ export const en = {
       'For now every command targets whichever project is active in Revit.',
   },
 
+  // /active — viewing ONLY. Commands still go to the PC an admin linked you to;
+  // this list grants nobody the ability to queue jobs onto someone else's PC.
+  active: {
+    title: '📂 Currently open projects',
+    none:
+      'No Revit PC is registered yet. Ask an admin to register one from the panel — ' +
+      'until then there is no project to show.',
+    online: (p: Params) => `🟢 ${p.ago} ago`,
+    offline: (p: Params) => `🔴 offline since ${p.since}`,
+    noDocs: '(Revit open, no model yet)',
+    hint:
+      '● on screen now · ○ also open\n' +
+      '› marks the PC serving you. Your commands always go there.\n' +
+      'Need another one? Ask an admin to move you — name the PC.',
+  },
+
   commandDesc: {
     status: 'PC status, open model, queue',
     levels: 'List levels in the model',
@@ -180,6 +196,7 @@ export const en = {
     warnings: 'Active model warnings',
     queue: 'Current command queue',
     project: 'Pick which open project commands target',
+    active: 'See open projects across every shared PC',
     help: 'Commands available to your role',
     count: 'Count MEP elements per floor · --csv adds room, load, circuit',
     tray: 'Cable tray length per floor · --type groups by type name',

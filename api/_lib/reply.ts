@@ -95,6 +95,63 @@ export function statusText(
   return lines.join('\n');
 }
 
+/** Satu PC di daftar `/active`. */
+export interface ActiveRow {
+  name: string;
+  /** PC yang melayani user ini — ditandai supaya ia tahu perintahnya menuju ke mana. */
+  mine: boolean;
+  lastSeenAt: string | null;
+  activeDoc: string | null;
+  openDocs: string[];
+}
+
+/**
+ * `/active` — project yang sedang terbuka, lintas PC yang boleh dilihat.
+ *
+ * BUKAN blok kode monospace, berbeda dari /queue dan hasil Revit. Nama berkas
+ * model di proyek nyata panjang ("HBE-ELECTRICAL-D_FINISHED GOOD WAREHOUSE.rvt"
+ * saja 45 karakter), dan blok kode tidak membungkus baris — ia menggeser layar
+ * ke samping, sehingga nama yang justru ingin dibaca hilang dari pandangan.
+ * Teks biasa dibungkus Telegram sendiri.
+ */
+export function activeText(locale: Locale, rows: ActiveRow[]): string {
+  const t = translator(locale);
+  if (!rows.length) return mdv2(t('active.none'));
+
+  const out: string[] = [`*${mdv2(t('active.title'))}*`, ''];
+
+  for (const row of rows) {
+    const when = isOnline(row.lastSeenAt)
+      ? t('active.online', { ago: relativeTime(row.lastSeenAt, locale) })
+      : t('active.offline', {
+          since: row.lastSeenAt ? absoluteTime(row.lastSeenAt, locale) : '—',
+        });
+
+    // Penanda `›` sama dengan yang dipakai /queue untuk job milik sendiri.
+    out.push(`${row.mine ? '› ' : '  '}*${mdv2(row.name)}* · ${mdv2(when)}`);
+
+    // `open_docs` baru dikirim add-in versi yang mendukung /project; kalau kosong,
+    // dokumen aktif masih lebih berguna daripada satu baris "tidak ada".
+    const docs = row.openDocs.length
+      ? row.openDocs
+      : row.activeDoc ? [row.activeDoc] : [];
+
+    if (!docs.length) {
+      out.push(mdv2(`     ${t('active.noDocs')}`));
+    } else {
+      for (const doc of docs) {
+        // Yang sedang di layar orang itu dibedakan dari yang cuma terbuka:
+        // command tanpa /project akan menuju ke yang bertanda ●.
+        out.push(mdv2(`     ${doc === row.activeDoc ? '●' : '○'} ${doc}`));
+      }
+    }
+    out.push('');
+  }
+
+  out.push(mdv2(t('active.hint')));
+  return out.join('\n');
+}
+
 export function queueText(locale: Locale, chatId: number, queue: {
   pending: CommandRow[];
   running: CommandRow[];

@@ -1140,6 +1140,43 @@ async function main() {
     check('…tapi /status tetap ditolak — isinya keadaan satu PC',
       sent.some((s) => s.text?.includes('belum dipasangkan')),
       sent.map((s) => s.text?.slice(0, 40)).join(' | ').slice(0, 80));
+
+    // ── /active: MELIHAT lintas PC, tanpa izin mengirim perintah ke sana ──
+    // Pembedaan itu seluruh alasan command ini ada. Kalau ia sampai memberi
+    // akses kirim, ongkosnya berubah total: satu /pdf membekukan Revit orang
+    // lain 2–5 menit, dan pemiliknya tidak diberi tahu.
+
+    // Default `shared` false: PC orang lain TIDAK boleh terlihat sebelum admin
+    // membukanya. Nama berkas model mengungkap nama project, dan nama project
+    // sering mengungkap nama klien.
+    for (const m of tables.machines) m.shared = false;
+    await send(U2, '/active', 66);
+    check('sebelum dibagikan, hanya PC sendiri yang terlihat',
+      sent.some((s) => s.text?.includes('PC Andi')) &&
+      !sent.some((s) => s.text?.includes('PC Budi')),
+      sent.map((s) => s.text?.slice(0, 60)).join(' | ').slice(0, 90));
+
+    // Admin membuka PC Budi.
+    (tables.machines.find((m) => m.id === PC1.id) as Row).shared = true;
+    tables.commands.length = 0;
+    await send(U2, '/active', 67);
+    check('sesudah dibagikan, PC lain ikut terlihat',
+      sent.some((s) => s.text?.includes('PC Budi') && s.text?.includes('PC Andi')),
+      sent.map((s) => s.text?.slice(0, 60)).join(' | ').slice(0, 90));
+    check('…dan MELIHAT tidak membuat satu job pun',
+      tables.commands.length === 0, `${tables.commands.length} job`);
+
+    // Yang paling penting: melihat TIDAK memindahkan tujuan perintahnya.
+    const stillMine = await send(U2, '/levels', 68);
+    check('perintah U2 tetap ke PC-nya sendiri, bukan ke PC yang dibagikan',
+      stillMine?.machine_id === PC2.id, String(stillMine?.machine_id));
+
+    // Dan user yang belum dipasangkan pun boleh melihat — itu justru gunanya:
+    // ia bisa menyebut PC yang ia butuh alih-alih menebak.
+    await send(U3, '/active', 69);
+    check('user belum dipasangkan tetap boleh /active',
+      sent.some((s) => s.text?.includes('PC Budi')),
+      sent.map((s) => s.text?.slice(0, 60)).join(' | ').slice(0, 90));
   }
 
   server.close();

@@ -26,6 +26,7 @@ const COMMANDS = [
   { section: 'info',   name: 'views',    role: 'viewer' },
   { section: 'info',   name: 'warnings', role: 'viewer' },
   { section: 'info',   name: 'project',  role: 'viewer' },
+  { section: 'info',   name: 'active',   role: 'viewer' },
   { section: 'info',   name: 'queue',    role: 'viewer' },
   { section: 'info',   name: 'help',     role: 'viewer' },
   { section: 'info',   name: 'lang',     role: 'viewer' },
@@ -193,7 +194,11 @@ async function loadMachines() {
     if (!res.ok) throw new Error(String(res.status));
     const data = await res.json();
     machines = data.machines ?? [];
-    machinesMeta = { ready: data.ready === true, envFallback: data.envFallback === true };
+    machinesMeta = {
+      ready: data.ready === true,
+      envFallback: data.envFallback === true,
+      sharingReady: data.sharingReady === true,
+    };
   } catch {
     machines = null;
     machinesMeta = null;
@@ -437,6 +442,19 @@ function renderMachines() {
       tag.textContent = i18n.t('machines.inactive');
       li.append(tag);
     } else {
+      // Boleh dilihat user lain lewat /active. HANYA melihat — tidak memberi
+      // siapa pun kemampuan mengirim perintah ke PC ini. Karena itu tombolnya
+      // ringan: efeknya bisa dibatalkan dan tidak bisa membekukan Revit.
+      if (machinesMeta?.sharingReady) {
+        const shareBtn = document.createElement('button');
+        shareBtn.className = m.shared ? 'tag tag--on' : 'tag';
+        shareBtn.type = 'button';
+        shareBtn.textContent = i18n.t(m.shared ? 'machines.shared' : 'machines.private');
+        shareBtn.title = i18n.t('machines.shareHint');
+        shareBtn.addEventListener('click', () => shareMachine(m, !m.shared));
+        li.append(shareBtn);
+      }
+
       const btn = document.createElement('button');
       btn.className = 'icon-btn';
       btn.type = 'button';
@@ -537,6 +555,23 @@ async function submitMachine(event) {
   renderMachines();
 }
 
+async function shareMachine(machine, shared) {
+  try {
+    const res = await fetch(`/api/panel/machines?id=${encodeURIComponent(machine.id)}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({ shared }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return toast(saveError(data.error));
+    toast(i18n.t(shared ? 'machines.sharedOn' : 'machines.sharedOff'));
+  } catch {
+    return toast(i18n.t('err.save'));
+  }
+  await loadMachines();
+  renderMachines();
+}
+
 async function revokeMachine(machine) {
   try {
     const res = await fetch(`/api/panel/machines?id=${encodeURIComponent(machine.id)}`, {
@@ -563,6 +598,7 @@ function saveError(code) {
     bad_id: 'err.notFound',
     bad_machine: 'err.badMachine',
     needs_migration: 'machines.needsMigration',
+    needs_sharing_migration: 'machines.needsSharing',
   };
   return i18n.t(known[code] ?? 'err.save');
 }

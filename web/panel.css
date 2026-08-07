@@ -171,6 +171,22 @@
 }
 .users .muted { flex-shrink: 0; }
 
+/* Tag yang BISA DITEKAN — penanda "PC ini boleh dilihat user lain".
+   Dibuat menyerupai tag biasa, bukan tombol penuh, karena efeknya ringan dan
+   bisa dibatalkan: ia hanya menentukan apakah PC muncul di /active orang lain,
+   bukan apakah mereka boleh mengirim perintah ke sana. */
+.users button.tag {
+  appearance: none;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.users .tag--on {
+  color: var(--accent);
+  background: var(--accent-weak);
+  border-color: var(--accent);
+}
+
 .icon-btn {
   appearance: none;
   font: inherit;

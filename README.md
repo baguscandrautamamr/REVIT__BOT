@@ -86,6 +86,7 @@ supabase/
   migrations/004_project_selection.sql  pilihan project per user (multi-file)
   migrations/005_machines.sql  daftar PC Revit + token-nya (opsional, lihat di dalamnya)
   migrations/006_machine_routing.sql  job diarahkan ke PC pemiliknya (opsional)
+  migrations/007_machine_sharing.sql  PC boleh TERLIHAT di /active user lain (opsional)
 scripts/
   deploy-bot.ps1    clone + npm ci + deploy konfigurasi bot (Windows)
   set-commands.ts   pasang webhook + menu Telegram per bahasa + scope admin
@@ -355,6 +356,66 @@ lewat jalur itu ia tidak punya identitas, dan job yang dialamatkan ke baris
 
 **Butuh migrasi `006_machine_routing.sql`.** Kalau belum dijalankan, bot bekerja
 persis seperti sebelumnya — satu antrean, dilayani PC mana pun.
+
+---
+
+## `/active` — melihat project lintas PC, tanpa bisa menyentuhnya
+
+User yang **tidak punya Revit sama sekali** (cuma HP) bisa memakai bot tanpa
+token, tanpa add-in, tanpa menginstal apa pun: token itu milik **PC**, identitas
+user adalah `chat_id`. Admin cukup menambahkannya di panel.
+
+Yang `/active` (alias `/aktif`) tambahkan: ia bisa **melihat** project yang
+sedang terbuka di PC-PC lain, tanpa bisa mengirim perintah ke sana.
+
+```
+📂 Project yang sedang terbuka
+
+› PC Budi · 🟢 2 menit lalu          ← › = PC yang melayanimu
+     ● GEDUNG-A.rvt
+
+  PC Andi · 🟢 4 detik lalu
+     ● GEDUNG-B.rvt
+     ○ LAMPIRAN-MEP.rvt
+
+  PC Sari · 🔴 offline sejak 18:42
+     ● WAREHOUSE.rvt
+
+● sedang di layar · ○ terbuka juga
+Butuh yang lain? Minta admin memindahkanmu — sebut nama PC-nya.
+```
+
+### Melihat ≠ memakai, dan ongkosnya jauh berbeda
+
+| | Yang terjadi | Akibat ke pemilik PC |
+|---|---|---|
+| **`/active`** | Membaca `machines.open_docs` dari database | **Nol.** Revit tidak disentuh sedetik pun |
+| **`/count`, `/pdf`** | Job masuk antrean PC itu | `/pdf` membekukan Revit-nya 2–5 menit |
+
+Itu sebabnya `/active` murah dan boleh dibuka luas, sementara **mengirim
+perintah tetap lewat admin**: job selalu menuju `bot_users.machine_id`, dan
+hanya admin yang bisa mengubahnya. Melihat daftar tidak memindahkan tujuan
+perintah siapa pun.
+
+Datanya sudah ada — `open_docs` dikirim add-in di **setiap heartbeat, tiap 4
+detik** — jadi fitur ini **tidak menyentuh add-in sama sekali**. Tidak ada DLL
+yang perlu dibangun ulang, tidak ada PC yang perlu didatangi.
+
+### Admin yang menentukan PC mana yang boleh terlihat
+
+Panel → **PC Revit** → tombol `pribadi` / `dibagikan` per PC.
+
+Default **`private`**, dan itu disengaja: nama berkas model mengungkap nama
+project, dan nama project sering mengungkap nama klien. Default `shared` berarti
+menjalankan migrasinya langsung membuka daftar itu ke semua orang tanpa satu pun
+keputusan diambil — dan tidak ada yang akan menyadarinya.
+
+`/active` juga bekerja untuk user yang **belum dipasangkan** ke PC mana pun. Itu
+justru gunanya di keadaan paling membingungkan: ia bisa melihat apa yang ada,
+lalu menyebut PC yang ia butuh — alih-alih menebak.
+
+**Butuh migrasi `007_machine_sharing.sql`.** Tanpa itu `/active` hanya
+menampilkan PC milik user itu sendiri, dan panel mengatakan apa yang kurang.
 
 ---
 

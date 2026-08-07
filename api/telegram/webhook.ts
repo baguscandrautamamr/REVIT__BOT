@@ -24,6 +24,7 @@ import { resolveLocale, translator, type Locale } from '../_lib/i18n';
 import { HEAVY, LIMITS, cooldownRemaining, isOnline } from '../_lib/limits';
 import {
   absoluteTime,
+  activeText,
   helpText,
   queueText,
   relativeTime,
@@ -220,6 +221,36 @@ async function serverSide(
     case 'users':
       await sendMessage(chatId, usersText(locale, await db.listUsers()));
       return;
+
+    // Daftar project terbuka, LINTAS PC yang boleh dilihat. Hanya membaca
+    // `machines.open_docs` dari database — yang sudah disegarkan heartbeat tiap
+    // 4 detik — jadi Revit orang lain tidak disentuh sedetik pun. Itu yang
+    // membedakannya dari mengirim perintah ke sana.
+    //
+    // Sengaja TIDAK butuh PC yang jelas: user yang belum dipasangkan admin justru
+    // yang paling perlu melihat daftar ini, supaya ia bisa menyebut PC yang ia
+    // butuh alih-alih menebak.
+    case 'active': {
+      const own = user.machine_id
+        ? (await db.listMachines()).filter((m) => m.is_active && m.id === user.machine_id)
+        : [];
+      const shared = await db.listSharedMachines();
+
+      // Dedupe: PC milik user ini bisa juga bertanda `shared`.
+      const seen = new Set<string>();
+      const rows = [...own, ...shared]
+        .filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)))
+        .map((m) => ({
+          name: m.name,
+          mine: m.id === user.machine_id,
+          lastSeenAt: m.last_seen_at,
+          activeDoc: m.active_doc,
+          openDocs: m.open_docs ?? [],
+        }));
+
+      await sendMessage(chatId, activeText(locale, rows));
+      return;
+    }
 
     case 'cancel': {
       const prefix = args[0];
