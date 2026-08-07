@@ -54,7 +54,7 @@ const SLOW_ENOUGH_MS = 10_000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
-  if (!authorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (!(await authorized(req))) return res.status(401).json({ error: 'unauthorized' });
 
   const body = (req.body ?? {}) as {
     id?: string;

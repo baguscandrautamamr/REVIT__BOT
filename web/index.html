@@ -108,6 +108,38 @@
         <p class="muted small" id="users-note" data-i18n="users.menuNote"></p>
       </section>
 
+      <!-- PC Revit. Admin saja, disembunyikan dari HTML dengan alasan yang sama
+           seperti users-card di atas. Ada supaya menambah PC tidak lagi berarti
+           menambah environment variable di Vercel lalu men-deploy ulang. -->
+      <section class="card glass" id="machines-card" hidden>
+        <div class="card__head">
+          <h2 data-i18n="machines.title"></h2>
+          <span class="muted small" data-i18n="machines.hint"></span>
+        </div>
+
+        <form class="field" id="machine-form" autocomplete="off">
+          <input class="input" id="machine-name" maxlength="64"
+                 required data-i18n-placeholder="machines.name">
+          <button class="btn btn--primary" type="submit" data-i18n="machines.add"></button>
+        </form>
+
+        <!-- Diisi app.js setelah PC dibuat, dan hanya sekali: yang tersimpan di
+             database cuma SHA-256-nya, jadi tidak ada jalan menampilkannya lagi.
+             Kalimat itu harus ada DI LAYAR, bukan cuma di dokumen. -->
+        <div class="glass--inset" id="machine-token" hidden>
+          <p class="small" data-i18n="machines.tokenOnce"></p>
+          <p class="mono small" id="machine-token-value"></p>
+          <p class="muted small" data-i18n="machines.tokenHow"></p>
+        </div>
+
+        <ul class="users" id="machine-list"></ul>
+        <p class="muted empty" id="machines-empty" data-i18n="machines.empty"></p>
+        <!-- Peringatan routing. Ditulis di panel, bukan cuma di migrasi SQL:
+             yang akan menambah PC kedua adalah orang yang sedang menekan tombol
+             ini, bukan orang yang sedang membaca berkas .sql. -->
+        <p class="muted small" id="machines-note" data-i18n="machines.routingNote"></p>
+      </section>
+
       <section class="card glass" id="pref-card">
         <div class="card__head"><h2 data-i18n="pref.title"></h2></div>
         <p class="muted small" data-i18n="theme.autoNote"></p>

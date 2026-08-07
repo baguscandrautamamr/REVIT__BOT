@@ -15,6 +15,7 @@ di Revit.
 | **Memasang dari nol, langkah demi langkah** | **[docs/SETUP-LANGKAH.md](docs/SETUP-LANGKAH.md)** ← mulai di sini |
 | Referensi lengkap semua sisi Telegram | [docs/TELEGRAM-BOT-GUIDE.id.md](docs/TELEGRAM-BOT-GUIDE.id.md) ([English](docs/TELEGRAM-BOT-GUIDE.en.md)) |
 | Tahu kenapa arsitekturnya begini | [docs/CATATAN-ARSITEKTUR.md](docs/CATATAN-ARSITEKTUR.md) |
+| **Membangun bot serupa dari nol** (CAD/desktop lain, platform chat lain) | **[catatan.md](catatan.md)** — cetak biru + jebakan yang sudah dibayar |
 | Menambah/mengubah teks bot | [docs/DUAL-LANGUAGE.md](docs/DUAL-LANGUAGE.md) |
 | Mengubah tampilan panel web | [docs/THEMING.md](docs/THEMING.md) |
 
@@ -62,6 +63,7 @@ api/
   panel/
     state.ts        data untuk panel web (butuh initData sah)
     users.ts        tambah/cabut akses user — admin saja, dari panel
+    machines.ts     daftarkan/cabut PC Revit — token dibuat server, tanpa env var
 addin/                DLL siap pasang ada di tab Actions → workflow "addin"
   App.cs            OnStartup: buat ExternalEvent, start worker
   Polling/          loop polling — TANPA Revit API
@@ -81,6 +83,7 @@ supabase/
   migrations/002_security.sql RLS — service role saja
   migrations/003_storage.sql  catatan bucket job-files (bucket-nya dibuat server)
   migrations/004_project_selection.sql  pilihan project per user (multi-file)
+  migrations/005_machines.sql  daftar PC Revit + token-nya (opsional, lihat di dalamnya)
 scripts/
   deploy-bot.ps1    clone + npm ci + deploy konfigurasi bot (Windows)
   set-commands.ts   pasang webhook + menu Telegram per bahasa + scope admin
@@ -189,6 +192,94 @@ Editor. Kalau belum dijalankan bot tetap bekerja seperti sebelumnya dan `/projec
 mengatakan apa yang kurang — server memeriksa kolomnya lebih dulu, sebab kolom
 yang belum ada membuat PostgREST menolak SELURUH request, dan yang mati bukan
 cuma fiturnya melainkan heartbeat.
+
+---
+
+## Rekap elemen: chat, atau CSV
+
+```bash
+/count GROUND FLOOR                      # rekap 8 kategori MEP
+/count GROUND FLOOR lighting --detail    # pecah per nama type, di dalam chat
+/count GROUND FLOOR --csv                # berkas: + ruangan, beban, circuit
+/tray GROUND FLOOR                       # per Comments (LV LADDER, dst)
+/tray GROUND FLOOR --type                # per nama type Revit
+```
+
+`--detail` untuk **cable tray** menyebut panjang meter per type, bukan jumlah
+batang. Jumlah batang tidak berarti apa-apa di lapangan — satu segmen bisa 60 cm
+atau 3 m — dan baris kategorinya sudah menyebut meter, jadi rincian yang hanya
+menyebut jumlah membuat dua angka yang tidak bisa dijumlahkan menjadi satu.
+
+`--csv` keluar sebagai **berkas**, bukan pesan, dan itu bukan pilihan gaya:
+`Layout.Width` adalah 52 karakter — diukur dari blok kode Telegram di ponsel —
+sementara tabel enam kolom butuh sekitar 65 sebelum spasi antar kolom dihitung.
+Kolomnya mengikuti schedule Revit supaya bisa dibandingkan baris per baris:
+
+```
+KATEGORI, FAMILY & TYPE, LEVEL, RUANGAN, COUNT,
+APPARENT LOAD (VA), VA/UNIT, CIRCUIT NUMBER, PANJANG (m)
+```
+
+Tiga hal yang ikut disebut di chat, dan semuanya soal kepercayaan pada angkanya:
+
+- **Sumber ruangan** — `FamilyInstance.Room`, `Space`, atau `GetRoomAtPoint`.
+  Ketiganya dicoba berurutan karena tidak ada satu yang benar untuk semua model,
+  dan kolom kosong untuk separuh model tidak boleh terlihat seperti "elemennya
+  memang tidak di ruangan mana pun".
+- **Sumber beban** — `Electrical Data` atau `Apparent Load`. Logikanya satu,
+  dipakai bersama `/load` (`ElectricalLoad.cs`): dua salinan berarti dua angka VA
+  berbeda untuk elemen yang sama, dan yang salah tidak akan terlihat salah.
+- **Berapa elemen tanpa nilai** — selnya **dikosongkan**, bukan diisi `0`. Nol
+  berarti "diukur, hasilnya nol"; kosong berarti "tidak ada nilainya di model".
+
+**Validasi sekali di awal:** bandingkan CSV-nya dengan schedule yang sudah ada di
+Revit. Kalau angkanya sama persis, logika filter dan levelnya benar dan hasil
+berikutnya bisa dipercaya.
+
+CSV memakai koma sebagai pemisah dan titik sebagai desimal, sama dengan
+`/schedule`. Kalau Excel-mu memakai locale yang membaca koma sebagai desimal,
+yang perlu diubah adalah **kedua** tempat sekaligus — dua konvensi CSV di satu
+bot lebih membingungkan daripada satu konvensi yang salah.
+
+---
+
+## Daftarkan PC Revit dari panel
+
+Sebelum ini machine token hanya bisa satu: `MACHINE_TOKEN` di Environment
+Variables Vercel. Sekarang PC bisa didaftarkan sebagai **baris tabel** — admin
+menekan tombol di panel, server yang membuat tokennya, dan berlakunya seketika.
+
+Kenapa bukan env var, dan ini yang menentukan seluruh bentuknya:
+
+| Lewat env var | Lewat tabel |
+|---|---|
+| Mengubahnya butuh **redeploy** | Berlaku seketika |
+| `MACHINE_TOKEN_1/_2/_3` → kode harus tahu ada berapa | Tambah baris, kode tidak berubah |
+| Mencabut satu PC = hapus env + redeploy | Satu tombol, tanpa menyentuh PC lain |
+
+Batasnya: **env untuk konfigurasi** (satu nilai, jarang berubah), **tabel untuk
+data** (bertambah, berkurang, dicabut). Daftar PC adalah data, sama seperti
+`bot_users` — yang sudah menempuh perpindahan yang sama dari SQL manual ke panel.
+
+Yang tersimpan cuma **SHA-256** tokennya, jadi token ditampilkan **sekali** lalu
+tidak bisa dilihat lagi. Yang hilang diganti, bukan dipulihkan.
+
+`MACHINE_TOKEN` **tetap berlaku** sebagai jalur cadangan untuk PC yang sudah
+berjalan, dan urutan itu disengaja: membuang env-nya sebelum PC yang ada
+dipindahkan ke tabel membuat satu-satunya PC yang ada langsung dijawab 401 — dan
+karena add-in hanya mencatatnya di berkas log di PC itu, yang terlihat dari
+Telegram cuma "PC offline" untuk PC yang justru menyala.
+
+> ⚠️ **Belum mengarahkan job.** Tabel ini membuat beberapa token diterima, tapi
+> `claimNextCommand()` masih mengambil job pending mana pun tanpa melihat siapa
+> yang meminta. Memasang **PC kedua yang sungguhan** sebelum routing per-PC ada
+> akan membuat PC itu mencuri job milik user PC pertama. Sampai routing itu jadi,
+> daftar ini gunanya: mengganti token PC yang ada tanpa redeploy, dan mencabutnya
+> satu per satu. Peringatan yang sama tertulis di panelnya sendiri.
+
+**Butuh migrasi `005_machines.sql`.** Kalau belum dijalankan, bot bekerja persis
+seperti sebelumnya lewat `MACHINE_TOKEN`, dan panel **mengatakan** apa yang
+kurang alih-alih hanya mematikan tombolnya.
 
 ---
 

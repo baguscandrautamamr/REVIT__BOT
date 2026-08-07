@@ -92,6 +92,17 @@ let state = null;
 let users = null;
 
 /**
+ * Daftar PC Revit, dan keterangan seputarnya dari server.
+ *
+ * `null` berarti GAGAL dimuat, bukan kosong — perbedaan yang sama pentingnya
+ * seperti pada `users`: "belum ada PC terdaftar" akan membuat admin mendaftarkan
+ * ulang PC yang sebenarnya sudah ada, dan tiap pendaftaran menghasilkan token
+ * baru yang membuat token lama di PC itu berhenti bekerja.
+ */
+let machines = null;
+let machinesMeta = null;
+
+/**
  * Sebab kegagalan terakhir, atau null kalau status berhasil dimuat.
  *
  * Dulu ini cuma boolean, dan panel selalu menulis kalimat yang sama: "Gagal
@@ -147,7 +158,7 @@ async function load() {
   if (problem && TERMINAL.has(problem)) stopPolling();
   else startPolling();
 
-  if (state?.role === 'admin') await loadUsers();
+  if (state?.role === 'admin') await Promise.all([loadUsers(), loadMachines()]);
   render();
 }
 
@@ -176,6 +187,19 @@ async function loadUsers() {
   }
 }
 
+async function loadMachines() {
+  try {
+    const res = await fetch('/api/panel/machines', { headers: authHeaders() });
+    if (!res.ok) throw new Error(String(res.status));
+    const data = await res.json();
+    machines = data.machines ?? [];
+    machinesMeta = { ready: data.ready === true, envFallback: data.envFallback === true };
+  } catch {
+    machines = null;
+    machinesMeta = null;
+  }
+}
+
 /* ── Render ────────────────────────────────────────────────────────────── */
 function render() {
   i18n.apply();
@@ -185,6 +209,7 @@ function render() {
   renderQueue();
   renderCommands();
   renderUsers();
+  renderMachines();
 }
 
 /** Sebab kegagalan → kunci penjelasannya di katalog panel. */
@@ -343,9 +368,137 @@ function renderUsers() {
   empty.hidden = rows.length > 0;
 }
 
+/* ── Daftar PC Revit (admin) ────────────────────────────────────────────── */
+function renderMachines() {
+  const card = document.getElementById('machines-card');
+  card.hidden = state?.role !== 'admin';
+  if (card.hidden) return;
+
+  const list = document.getElementById('machine-list');
+  const rows = machines ?? [];
+
+  list.replaceChildren(...rows.map((m) => {
+    const li = document.createElement('li');
+    if (!m.isActive) li.classList.add('is-inactive');
+
+    const name = document.createElement('b');
+    name.textContent = m.name;
+
+    // Online dinilai dengan ambang yang sama seperti server (30 detik), supaya
+    // panel dan /status tidak pernah menjawab berbeda untuk PC yang sama.
+    const fresh = m.lastSeenAt && Date.now() - new Date(m.lastSeenAt).getTime() < 30000;
+
+    const dot = document.createElement('span');
+    dot.className = `dot ${m.isActive ? (fresh ? 'dot--ok' : 'dot--err') : 'dot--warn'}`;
+
+    const seen = document.createElement('span');
+    seen.className = 'muted small';
+    seen.textContent = m.lastSeenAt ? relative(m.lastSeenAt) : i18n.t('machines.never');
+
+    li.append(dot, name, seen);
+
+    if (m.addinVersion) {
+      const ver = document.createElement('span');
+      ver.className = 'mono small';
+      ver.textContent = m.addinVersion;
+      li.append(ver);
+    }
+
+    if (!m.isActive) {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = i18n.t('machines.inactive');
+      li.append(tag);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'icon-btn';
+      btn.type = 'button';
+      btn.textContent = '✕';
+      btn.title = i18n.t('machines.revoke');
+      btn.setAttribute('aria-label', `${i18n.t('machines.revoke')} — ${m.name}`);
+      btn.addEventListener('click', () => revokeMachine(m));
+      li.append(btn);
+    }
+    return li;
+  }));
+
+  // Tiga sebab daftar bisa kosong, dan penanganannya berbeda semua: gagal
+  // dimuat, migrasi belum jalan, atau memang belum ada PC yang didaftarkan.
+  // Satu kalimat untuk ketiganya akan mengirim admin memperbaiki hal yang salah.
+  const empty = document.getElementById('machines-empty');
+  empty.textContent =
+    machines === null ? i18n.t('err.load')
+      : machinesMeta && !machinesMeta.ready ? i18n.t('machines.needsMigration')
+        : machinesMeta?.envFallback ? `${i18n.t('machines.empty')} ${i18n.t('machines.envOnly')}`
+          : i18n.t('machines.empty');
+  empty.hidden = rows.length > 0;
+
+  document.getElementById('machine-form').hidden = machinesMeta ? !machinesMeta.ready : false;
+}
+
+async function submitMachine(event) {
+  event.preventDefault();
+  const name = document.getElementById('machine-name');
+
+  let token = null;
+  try {
+    const res = await fetch('/api/panel/machines', {
+      method: 'POST',
+      headers: authHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({ name: name.value.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return toast(saveError(data.error));
+    token = data.token;
+
+    name.value = '';
+    toast(i18n.t('machines.added'));
+    tg?.HapticFeedback?.notificationOccurred?.('success');
+  } catch {
+    return toast(i18n.t('err.save'));
+  }
+
+  // Ditampilkan SEBELUM daftar dimuat ulang, dan tidak disembunyikan lagi oleh
+  // render berikutnya: ini satu-satunya kesempatan token itu terlihat. Panel
+  // memanggil /api/panel/state tiap 15 detik, jadi menaruhnya di jalur render
+  // biasa berarti ia hilang dalam hitungan detik.
+  const box = document.getElementById('machine-token');
+  document.getElementById('machine-token-value').textContent = token ?? '';
+  box.hidden = !token;
+  if (token) {
+    try { await navigator.clipboard.writeText(token); toast(i18n.t('cmd.copied')); } catch { /* izin ditolak */ }
+  }
+
+  await loadMachines();
+  renderMachines();
+}
+
+async function revokeMachine(machine) {
+  try {
+    const res = await fetch(`/api/panel/machines?id=${encodeURIComponent(machine.id)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return toast(saveError(data.error));
+    toast(i18n.t('machines.revoked'));
+  } catch {
+    return toast(i18n.t('err.save'));
+  }
+  await loadMachines();
+  renderMachines();
+}
+
 /** Pesan error dari server → kalimat yang bisa dibaca, dalam bahasa aktif. */
 function saveError(code) {
-  const known = { bad_chat_id: 'err.badChatId', bad_name: 'err.badName', self: 'err.self', not_found: 'err.notFound' };
+  const known = {
+    bad_chat_id: 'err.badChatId',
+    bad_name: 'err.badName',
+    self: 'err.self',
+    not_found: 'err.notFound',
+    bad_id: 'err.notFound',
+    needs_migration: 'machines.needsMigration',
+  };
   return i18n.t(known[code] ?? 'err.save');
 }
 
@@ -437,6 +590,7 @@ function relative(iso) {
 /* ── Boot ──────────────────────────────────────────────────────────────── */
 document.getElementById('refresh').addEventListener('click', load);
 document.getElementById('user-form').addEventListener('submit', submitUser);
+document.getElementById('machine-form').addEventListener('submit', submitMachine);
 theme.onThemeChange(() => syncTheme());
 render();
 // Polling dinyalakan/dimatikan oleh `load()` sendiri: memanggil API tiap 15
