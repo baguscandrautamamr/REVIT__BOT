@@ -42,6 +42,26 @@ export function notImplemented(spec: CommandSpec): boolean {
 }
 
 /**
+ * Command yang dijawab server tapi TETAP butuh sebuah PC Revit yang jelas.
+ *
+ * Dipisahkan dari `SERVER_SIDE` karena keduanya menjawab pertanyaan yang berbeda:
+ * `SERVER_SIDE` = "apakah perlu diantre ke Revit", yang ini = "apakah perlu tahu
+ * PC mana". `/status` tidak mengantre apa pun, tapi seluruh isinya adalah keadaan
+ * satu PC — sementara `/help` dan `/users` tidak menyentuh PC mana pun.
+ *
+ * Bedanya menentukan apakah seseorang yang belum dipasangkan ke PC masih bisa
+ * memakai bot untuk hal-hal yang tidak ada hubungannya dengan Revit. Tanpa
+ * pembedaan ini, menambah PC KEDUA membuat setiap user yang belum dipasangkan —
+ * termasuk adminnya sendiri — kehilangan bahkan /help.
+ */
+const SERVER_SIDE_NEEDS_MACHINE = new Set(['status', 'queue', 'project', 'pause', 'resume']);
+
+/** Perlu PC Revit yang jelas sebelum boleh dijalankan. */
+export function needsMachine(spec: CommandSpec): boolean {
+  return !SERVER_SIDE.has(spec.name) || SERVER_SIDE_NEEDS_MACHINE.has(spec.name);
+}
+
+/**
  * Sumber tunggal daftar command. Dipakai oleh:
  *   - webhook (routing + cek role)
  *   - /help (pengelompokan per section)

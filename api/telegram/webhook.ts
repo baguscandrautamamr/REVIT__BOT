@@ -12,6 +12,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import {
   SERVER_SIDE,
+  needsMachine,
   notImplemented,
   parseCommand,
   splitArgs,
@@ -125,7 +126,15 @@ async function onMessage(msg: any, updateId: number): Promise<void> {
   // /status, /project, dan antrean tidak masing-masing menebaknya.
   const target = await targetFor(user);
 
-  if (target.kind === 'unassigned') {
+  // Ditolak HANYA kalau command-nya memang butuh sebuah PC.
+  //
+  // Versi pertama menolak semuanya di sini, dan akibatnya adalah jurang yang
+  // persis muncul di langkah paling wajar: begitu PC KEDUA didaftarkan, admin
+  // yang belum memasangkan dirinya kehilangan /help, /users, /lang — semuanya —
+  // padahal tidak satu pun dari itu menyentuh Revit. Yang tersisa untuk keluar
+  // dari keadaan itu cuma panel, dan orang yang tidak tahu itu akan menyimpulkan
+  // botnya rusak tepat setelah ia menambah PC.
+  if (target.kind === 'unassigned' && needsMachine(spec)) {
     // DITOLAK, bukan ditebak. Memilih salah satu PC berarti mengerjakan model
     // orang lain lalu mengirimkannya sebagai hasil yang sah — dan tidak ada apa
     // pun di balasannya yang akan menandai bahwa gambar kerja itu dari project
@@ -146,6 +155,10 @@ async function onMessage(msg: any, updateId: number): Promise<void> {
     return;
   }
 
+  // Sampai di sini command-nya butuh Revit, jadi `unassigned` sudah ditolak di
+  // atas — tapi dinyatakan lagi supaya tipenya menyempit tanpa asumsi.
+  if (target.kind === 'unassigned') return;
+
   // Ditolak DI SINI, bukan setelah keliling ke Revit. Add-in memang menjawab
   // "belum diimplementasi", tapi jawaban itu baru sampai setelah job melewati
   // Supabase, polling, dan main thread Revit — dan kalau PC-nya kebetulan mati,
@@ -164,37 +177,24 @@ async function onMessage(msg: any, updateId: number): Promise<void> {
 async function serverSide(
   spec: CommandSpec,
   user: db.BotUser,
-  target: Exclude<Target, { kind: 'unassigned' }>,
+  target: Target,
   args: string[],
   tgLang: string | null,
   locale: Locale,
 ): Promise<void> {
   const t = translator(locale);
   const chatId = user.chat_id;
-  const machine = target.view;
-  const scope = scopeOf(target);
 
+  // ── Tidak butuh PC mana pun ───────────────────────────────────────────────
+  // Tetap bekerja walau user belum dipasangkan ke PC. Itu yang membuat menambah
+  // PC kedua tidak mengunci siapa pun di luar botnya sendiri — termasuk admin,
+  // yang justru orang yang harus memperbaiki keadaan itu.
   switch (spec.name) {
     case 'help':
       for (const part of chunk(helpText(locale, user.role))) {
         await sendMessage(chatId, part);
       }
       return;
-
-    // Antrean disaring ke PC user ini. Angka gabungan dari beberapa PC akan
-    // membuat orang mengira job-nya menunggu di belakang pekerjaan yang
-    // sebenarnya berjalan di mesin lain, lalu menunggu tanpa alasan.
-    case 'status': {
-      const queue = await db.queueSnapshot(scope);
-      await sendMessage(chatId, statusText(locale, machine, queue));
-      return;
-    }
-
-    case 'queue': {
-      const queue = await db.queueSnapshot(scope);
-      await sendMessage(chatId, queueText(locale, chatId, queue));
-      return;
-    }
 
     case 'lang':
       await handleLang(user, args, tgLang, store);
@@ -217,26 +217,8 @@ async function serverSide(
       return;
     }
 
-    case 'project':
-      await handleProject(user, machine, args, locale);
-      return;
-
     case 'users':
       await sendMessage(chatId, usersText(locale, await db.listUsers()));
-      return;
-
-    // Pause menyentuh PC ADMIN SENDIRI, bukan semua PC. Menghentikan Revit orang
-    // lain dari HP tanpa mereka tahu adalah kejutan yang tidak bisa dijelaskan
-    // dari sisi mereka: job tetap masuk antrean dan tidak pernah jalan. Untuk
-    // mematikan semuanya sekaligus, `machine_state.bot_enabled` yang dipakai.
-    case 'pause':
-      await db.setPaused(machine.id, true);
-      await sendMessage(chatId, mdv2(t('admin.paused')));
-      return;
-
-    case 'resume':
-      await db.setPaused(machine.id, false);
-      await sendMessage(chatId, mdv2(t('admin.resumed')));
       return;
 
     case 'cancel': {
@@ -262,6 +244,50 @@ async function serverSide(
       await sendMessage(chatId, mdv2(t('admin.cancelled', { id: job.id.slice(0, 8) })));
       return;
     }
+  }
+
+  // ── Butuh PC yang jelas ───────────────────────────────────────────────────
+  // Sudah ditolak di `onMessage` lewat `needsMachine`, tapi dinyatakan lagi di
+  // sini supaya tipenya menyempit tanpa mengandalkan penjagaan di tempat lain
+  // tetap benar. Kalau daftar `SERVER_SIDE_NEEDS_MACHINE` dan cabang di bawah
+  // ini menyimpang, yang terjadi adalah diam — bukan crash.
+  if (target.kind === 'unassigned') return;
+  const machine = target.view;
+  const scope = scopeOf(target);
+
+  switch (spec.name) {
+    // Antrean disaring ke PC user ini. Angka gabungan dari beberapa PC akan
+    // membuat orang mengira job-nya menunggu di belakang pekerjaan yang
+    // sebenarnya berjalan di mesin lain, lalu menunggu tanpa alasan.
+    case 'status': {
+      const queue = await db.queueSnapshot(scope);
+      await sendMessage(chatId, statusText(locale, machine, queue));
+      return;
+    }
+
+    case 'queue': {
+      const queue = await db.queueSnapshot(scope);
+      await sendMessage(chatId, queueText(locale, chatId, queue));
+      return;
+    }
+
+    case 'project':
+      await handleProject(user, machine, args, locale);
+      return;
+
+    // Pause menyentuh PC PENGIRIMNYA SENDIRI, bukan semua PC. Menghentikan Revit
+    // orang lain dari HP tanpa mereka tahu adalah kejutan yang tidak bisa
+    // dijelaskan dari sisi mereka: job tetap masuk antrean dan tidak pernah
+    // jalan. Untuk mematikan semuanya sekaligus, `bot_enabled` yang dipakai.
+    case 'pause':
+      await db.setPaused(machine.id, true);
+      await sendMessage(chatId, mdv2(t('admin.paused')));
+      return;
+
+    case 'resume':
+      await db.setPaused(machine.id, false);
+      await sendMessage(chatId, mdv2(t('admin.resumed')));
+      return;
   }
 }
 

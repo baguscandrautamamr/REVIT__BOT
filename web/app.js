@@ -489,9 +489,15 @@ function syncMachineOptions() {
   select.replaceChildren(...options);
   if (options.some((o) => o.value === keep)) select.value = keep;
 
-  // Selama masih satu PC, tidak ada yang perlu dipilih — dan dropdown berisi satu
-  // pilihan hanya mengundang orang mengira ada keputusan yang harus diambil.
-  select.hidden = rows.length < 2;
+  // Terlihat sejak PC PERTAMA, bukan sejak yang kedua.
+  //
+  // Versi pertama menyembunyikannya selama masih satu PC — dengan alasan "tidak
+  // ada yang perlu dipilih", yang benar tapi menutup satu-satunya kesempatan
+  // memasangkan orang LEBIH DULU. Akibatnya jurang: begitu PC kedua didaftarkan,
+  // semua user seketika jadi "belum dipasangkan", dan admin baru bisa
+  // membereskannya sesudah keadaan itu terjadi. Dropdown yang muncul sejak awal
+  // membuat urutan yang benar mungkin dikerjakan.
+  select.hidden = rows.length === 0;
 }
 
 async function submitMachine(event) {
