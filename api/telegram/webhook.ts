@@ -383,13 +383,22 @@ function buildPayload(spec: CommandSpec, args: string[], locale: Locale): Built 
           level: positional[0],
           category: positional[1] ?? null,
           detail: flags.includes('detail'),
+          // Kolom Family&Type lengkap, ruangan, apparent load, dan nomor circuit
+          // tidak mungkin muat di blok kode Telegram (52 karakter), jadi ia keluar
+          // sebagai berkas. Add-in versi lama mengabaikan flag ini dan tetap
+          // menjawab teks biasa — bukan gagal.
+          csv: flags.includes('csv'),
         },
       };
     }
 
+    // `--type` mengelompokkan per nama type Revit; tanpa itu per Comments.
+    // Nilainya dikirim sebagai kata, bukan boolean, karena kunci ini sudah ada
+    // sejak awal dengan nilai 'comments' — add-in lama yang mengabaikannya tetap
+    // bekerja seperti sebelumnya.
     case 'tray':
       if (!joined) return { error: t('errors.missingArgs', { example }) };
-      return { payload: { level: joined, groupBy: 'comments' } };
+      return { payload: { level: joined, groupBy: flags.includes('type') ? 'type' : 'comments' } };
 
     case 'load':
       if (!joined) return { error: t('errors.missingArgs', { example }) };

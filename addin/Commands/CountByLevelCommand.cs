@@ -5,7 +5,12 @@ using Autodesk.Revit.DB;
 namespace RevitTelegramBridge.Commands;
 
 /// <summary>
-/// /count &lt;level&gt; [kategori] [--detail] — rekap elemen MEP per lantai.
+/// /count &lt;level&gt; [kategori] [--detail] [--csv] — rekap elemen MEP per lantai.
+///
+/// <c>--detail</c> memecah per nama TYPE di dalam balasan chat.
+/// <c>--csv</c> mengirim berkas dengan kolom yang tidak mungkin muat di chat:
+/// Family&amp;Type lengkap, ruangan, apparent load, dan nomor circuit — bentuk yang
+/// sama dengan schedule Revit, supaya bisa dibandingkan baris per baris.
 /// </summary>
 public sealed class CountByLevelCommand : IBotCommand
 {
@@ -55,6 +60,12 @@ public sealed class CountByLevelCommand : IBotCommand
         }
 
         var detail = payload.Flag("detail");
+        var csv = payload.Flag("csv");
+
+        // Hanya diisi saat --csv. Membacanya untuk setiap elemen tidak gratis:
+        // ruangan dicari lewat sampai tiga jalur, salah satunya geometris.
+        var csvRows = new List<CountRow>();
+        var stats = new CsvStats();
 
         var sb = new StringBuilder();
         sb.AppendLine(level.Name);
@@ -112,13 +123,28 @@ public sealed class CountByLevelCommand : IBotCommand
                 // dipatok 24 tanpa dipotong, jadi setiap nama yang lebih panjang
                 // mendorong angkanya keluar jalur dan kolomnya berhenti lurus
                 // persis di baris yang paling banyak isinya.
-                foreach (var group in elements
-                             .GroupBy(TypeNameOf)
-                             .OrderByDescending(g => g.Count()))
+                var groups = elements.GroupBy(TypeNameOf);
+
+                // Cable tray diurutkan dan dilaporkan per METER, bukan per jumlah
+                // batang. Jumlah batang tidak berarti apa-apa di lapangan — satu
+                // segmen bisa 60 cm atau 3 m — dan baris kategorinya di atas sudah
+                // menyebut meter, jadi rincian yang hanya menyebut jumlah membuat
+                // dua angka yang tidak bisa dijumlahkan menjadi satu.
+                var isTray = category == BuiltInCategory.OST_CableTray;
+                var ordered = isTray
+                    ? groups.OrderByDescending(g => g.Sum(LengthMetres))
+                    : groups.OrderByDescending(g => g.Count());
+
+                foreach (var group in ordered)
                 {
-                    Layout.Row(sb, "   " + group.Key, $"{group.Count(),4}", 28);
+                    var tail = isTray
+                        ? $"{group.Count(),4}  {group.Sum(LengthMetres),8:N1} m"
+                        : $"{group.Count(),4}";
+                    Layout.Row(sb, "   " + group.Key, tail, 28);
                 }
             }
+
+            if (csv) AppendCsvRows(csvRows, label, category, level, elements, stats);
         }
 
         // Tiga sebab yang SANGAT berbeda dulu dijawab dengan satu kalimat yang
@@ -142,7 +168,114 @@ public sealed class CountByLevelCommand : IBotCommand
         sb.AppendLine();
         sb.Append($"Total {total} elemen");
 
-        return ExecResult.Success(sb.ToString());
+        if (!csv) return ExecResult.Success(sb.ToString());
+
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.AppendLine($"CSV: {csvRows.Count} baris (satu baris = Family&Type × ruangan × circuit).");
+
+        // DARI MANA tiap kolom terbaca ikut disebut, dan itu bukan hiasan.
+        // Kolom ruangan yang kosong untuk separuh model tidak boleh terlihat
+        // seperti "elemennya memang tidak di ruangan mana pun" — dan hanya baris
+        // ini yang bisa membedakan "jalur pembacaannya salah untuk model ini"
+        // dari "datanya memang belum diisi".
+        if (stats.RoomSources.Count > 0)
+            sb.AppendLine($"Sumber ruangan: {string.Join(" + ", stats.RoomSources.OrderBy(s => s))}");
+        if (stats.WithoutRoom > 0)
+            sb.AppendLine($"{stats.WithoutRoom} elemen tanpa ruangan.");
+
+        if (stats.LoadSources.Count > 0)
+            sb.AppendLine($"Sumber beban: {string.Join(" + ", stats.LoadSources.OrderBy(s => s))}");
+        if (stats.WithoutLoad > 0)
+            sb.AppendLine($"{stats.WithoutLoad} elemen tanpa nilai beban — selnya DIKOSONGKAN, bukan diisi 0.");
+
+        sb.Append("Bandingkan sekali dengan schedule Revit-mu. Kalau angkanya sama persis, logikanya benar.");
+
+        var fileName = $"{Sanitize(doc.Title)}_{Sanitize(level.Name)}_count_{DateTime.Now:yyyy-MM-dd}.csv";
+        return ExecResult.WithFile(sb.ToString().TrimEnd(), fileName, CountCsv.Build(csvRows));
+    }
+
+    /* ── Baris CSV ─────────────────────────────────────────────────────────── */
+
+    /// <summary>
+    /// Apa yang tidak terbaca, dan dari mana yang terbaca berasal.
+    ///
+    /// Dikumpulkan sepanjang penyusunan lalu dilaporkan sekali di chat. Tanpa ini
+    /// CSV yang separuh kolomnya kosong terkirim tanpa sepatah kata pun — dan
+    /// orang akan menyimpulkan modelnya yang kosong, bukan pembacaannya yang
+    /// salah jalur.
+    /// </summary>
+    private sealed class CsvStats
+    {
+        public int WithoutRoom;
+        public int WithoutLoad;
+        public HashSet<string> RoomSources { get; } = new();
+        public HashSet<string> LoadSources { get; } = new();
+    }
+
+    /// <summary>
+    /// Kelompokkan satu kategori jadi baris CSV: Family&amp;Type × ruangan × circuit.
+    ///
+    /// Kunci pengelompokannya sengaja sama dengan schedule Revit yang jadi acuan.
+    /// Menambah atau mengurangi satu bidang di kunci ini akan mengubah jumlah
+    /// barisnya, dan perbandingan dengan schedule aslinya langsung tidak cocok
+    /// lagi — padahal angka totalnya tetap benar. Yang paling sulit dilacak.
+    /// </summary>
+    private static void AppendCsvRows(
+        List<CountRow> rows,
+        string label,
+        BuiltInCategory category,
+        Level level,
+        List<Element> elements,
+        CsvStats stats)
+    {
+        var isTray = category == BuiltInCategory.OST_CableTray;
+
+        var records = new List<(string FamilyType, string? Room, string? Circuit, double? Va, double Metres)>();
+
+        foreach (var e in elements)
+        {
+            var (room, roomSource) = RoomResolver.Resolve(e);
+            if (room is null) stats.WithoutRoom++;
+            else stats.RoomSources.Add(roomSource);
+
+            var (va, loadSource) = ElectricalLoad.ApparentVa(e);
+            if (va is null) stats.WithoutLoad++;
+            else stats.LoadSources.Add(loadSource);
+
+            records.Add((CountCsv.FamilyTypeOf(e), room, CountCsv.CircuitOf(e), va, isTray ? LengthMetres(e) : 0));
+        }
+
+        foreach (var group in records
+                     .GroupBy(r => (r.FamilyType, r.Room, r.Circuit))
+                     .OrderBy(g => g.Key.FamilyType, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(g => g.Key.Room ?? "", StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(g => g.Key.Circuit ?? "", StringComparer.OrdinalIgnoreCase))
+        {
+            var withLoad = group.Count(r => r.Va is not null);
+
+            rows.Add(new CountRow
+            {
+                Category = label,
+                FamilyType = group.Key.FamilyType,
+                Level = level.Name,
+                Room = group.Key.Room,
+                Count = group.Count(),
+                // Null, bukan nol, kalau TIDAK SATU PUN elemen di grup ini punya
+                // nilai beban. Lihat CountCsv.Num untuk akibatnya di Excel.
+                TotalVa = withLoad > 0 ? group.Sum(r => r.Va ?? 0) : null,
+                WithLoad = withLoad,
+                Circuit = group.Key.Circuit,
+                Metres = isTray ? group.Sum(r => r.Metres) : null,
+            });
+        }
+    }
+
+    private static string Sanitize(string input)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(input.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+        return cleaned.Replace(' ', '_');
     }
 
     /// <summary>

@@ -174,6 +174,109 @@ export async function updateMachine(patch: Partial<MachineState>): Promise<void>
   await rest('machine_state?id=eq.1', { method: 'PATCH', body: JSON.stringify(patch) });
 }
 
+// ── machines ──────────────────────────────────────────────────────────────
+
+/**
+ * Satu PC Revit. `token_hash` SENGAJA tidak ada di tipe ini: seluruh pembacaan
+ * memakai daftar kolom eksplisit di bawah, jadi hash-nya tidak pernah ikut
+ * keluar dari modul ini — apalagi sampai ke panel.
+ */
+export interface Machine {
+  id: string;
+  name: string;
+  is_active: boolean;
+  last_seen_at: string | null;
+  active_doc: string | null;
+  open_docs: string[] | null;
+  revit_version: string | null;
+  addin_version: string | null;
+  is_paused: boolean;
+  created_at: string;
+}
+
+const MACHINE_FIELDS =
+  'id,name,is_active,last_seen_at,active_doc,open_docs,revit_version,addin_version,is_paused,created_at';
+
+/**
+ * Migrasi 005 (tabel `machines`) sudah dijalankan atau belum.
+ *
+ * Diperiksa dengan alasan yang persis sama seperti `projectSelectionReady`, tapi
+ * di jalur yang jauh lebih berbahaya: pencarian token dipanggil di SETIAP
+ * /api/machine/claim. Tabel yang belum ada membuat PostgREST menjawab error, dan
+ * kalau error itu dibiarkan naik, seluruh autentikasi mesin gagal — bukan cuma
+ * fitur barunya. Bot yang tadinya sehat mati karena satu langkah SQL yang
+ * memang OPSIONAL.
+ */
+let machinesTable: boolean | null = null;
+
+export async function machinesReady(): Promise<boolean> {
+  if (machinesTable !== null) return machinesTable;
+  try {
+    await rest(`machines?limit=1&select=id`);
+    machinesTable = true;
+  } catch {
+    console.warn('[db] migrasi 005 belum dijalankan — daftar PC dimatikan, memakai MACHINE_TOKEN');
+    machinesTable = false;
+  }
+  return machinesTable;
+}
+
+export async function listMachines(): Promise<Machine[]> {
+  if (!(await machinesReady())) return [];
+  return rest<Machine[]>(`machines?select=${MACHINE_FIELDS}&order=created_at.asc`);
+}
+
+/**
+ * Cari PC dari hash token-nya. Mengembalikan null — tidak melempar — kalau
+ * tabelnya belum ada, supaya jalur `MACHINE_TOKEN` lama tetap bisa dicoba.
+ */
+export async function findMachineByTokenHash(hash: string): Promise<Machine | null> {
+  if (!(await machinesReady())) return null;
+  const rows = await rest<Machine[]>(
+    `machines?token_hash=eq.${encodeURIComponent(hash)}&limit=1&select=${MACHINE_FIELDS}`,
+  );
+  return rows[0] ?? null;
+}
+
+export async function createMachine(name: string, tokenHash: string): Promise<Machine> {
+  const rows = await rest<Machine[]>(`machines?select=${MACHINE_FIELDS}`, {
+    method: 'POST',
+    headers: RETURNING,
+    body: JSON.stringify([{ name, token_hash: tokenHash }]),
+  });
+  return rows[0]!;
+}
+
+/**
+ * Cabut/kembalikan izin satu PC. Sengaja BUKAN DELETE, alasan yang sama seperti
+ * `setUserActive`: barisnya adalah catatan PC mana yang pernah ada, dan
+ * menghapusnya membuat token yang sama bisa didaftarkan lagi tanpa jejak.
+ */
+export async function setMachineActive(id: string, active: boolean): Promise<Machine | null> {
+  const rows = await rest<Machine[]>(`machines?id=eq.${id}&select=${MACHINE_FIELDS}`, {
+    method: 'PATCH',
+    headers: RETURNING,
+    body: JSON.stringify({ is_active: active }),
+  });
+  return rows[0] ?? null;
+}
+
+/**
+ * Catat heartbeat satu PC.
+ *
+ * Tidak pernah melempar: heartbeat per-PC hanyalah yang membuat panel jujur
+ * tentang PC mana yang hidup. Heartbeat yang BENAR-BENAR menentukan — `/status`,
+ * `/project`, penyapu — masih di `machine_state`, dan menjatuhkan /claim karena
+ * catatan tambahan ini gagal berarti bot mati demi baris kosmetik.
+ */
+export async function touchMachine(id: string, patch: Partial<Machine>): Promise<void> {
+  try {
+    await rest(`machines?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  } catch (err) {
+    console.error('[db] touchMachine', err);
+  }
+}
+
 // ── commands ──────────────────────────────────────────────────────────────
 
 export async function insertCommand(row: {

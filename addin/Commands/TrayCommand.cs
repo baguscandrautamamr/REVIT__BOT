@@ -5,12 +5,19 @@ using Autodesk.Revit.DB;
 namespace RevitTelegramBridge.Commands;
 
 /// <summary>
-/// /tray &lt;level&gt; — panjang cable tray per lantai, dikelompokkan per Comments.
+/// /tray &lt;level&gt; [--type] — panjang cable tray per lantai.
 ///
-/// Comments dipakai sebagai pengelompokan karena di proyek elektrikal itulah
-/// tempat jenis tray biasanya ditulis ("LV LADDER", "ELV TRUNKING"). Kalau di
-/// modelmu jenis tray ada di parameter lain, ganti <see cref="GroupKeyOf"/> —
-/// itu satu-satunya tempat yang perlu diubah.
+/// Default dikelompokkan per Comments, karena di proyek elektrikal itulah tempat
+/// jenis tray biasanya ditulis ("LV LADDER", "ELV TRUNKING"). <c>--type</c>
+/// mengelompokkan per nama TYPE Revit.
+///
+/// Dua-duanya disediakan karena keduanya benar untuk model yang berbeda, dan
+/// tidak ada cara memilih dari luar: model yang Comments-nya rapi ingin
+/// dikelompokkan per Comments, model yang Comments-nya kosong tidak punya apa pun
+/// di sana. Sebelum ada flag ini, model kedua diam-diam jatuh ke nama type — hasil
+/// yang benar, tapi lewat jalur yang tidak pernah disebutkan kepada pembacanya,
+/// jadi tidak ada cara membedakannya dari pengelompokan per Comments yang
+/// kebetulan mirip. Sekarang dasar pengelompokannya ikut dicetak.
 /// </summary>
 public sealed class TrayCommand : IBotCommand
 {
@@ -34,14 +41,26 @@ public sealed class TrayCommand : IBotCommand
         if (trays.Count == 0 && fittings.Count == 0)
             return ExecResult.Success($"{level.Name}\n\nTidak ada cable tray di lantai ini.");
 
+        // `groupBy` sudah dikirim server sejak awal tapi belum pernah dibaca di
+        // sini; sekarang ia yang menentukan. Nilai apa pun selain "type" berarti
+        // Comments — jadi add-in versi ini tetap benar kalau dipasangkan dengan
+        // server lama yang hanya pernah mengirim "comments".
+        var byType = string.Equals(payload.Str("groupBy"), "type", StringComparison.OrdinalIgnoreCase);
+
         var groups = trays
-            .GroupBy(GroupKeyOf)
+            .GroupBy(e => GroupKeyOf(e, byType))
             .Select(g => (Key: g.Key, Count: g.Count(), Metres: g.Sum(LengthMetres)))
             .OrderByDescending(g => g.Metres)
             .ToList();
 
         var sb = new StringBuilder();
         sb.AppendLine(level.Name);
+
+        // Dasar pengelompokan disebut, bukan diasumsikan terbaca dari isinya.
+        // "LV LADDER" dan "Cable Tray 300mm" sama-sama masuk akal sebagai nama
+        // type MAUPUN sebagai Comments, jadi tanpa baris ini tidak ada cara
+        // memastikan angka di bawahnya dikelompokkan seperti yang dimaksud.
+        sb.AppendLine(byType ? "(per nama type)" : "(per Comments — /tray --type untuk per nama type)");
         sb.AppendLine();
 
         // Kolom selebar nama terpanjang yang masih wajar. Nama yang melewatinya
@@ -70,13 +89,19 @@ public sealed class TrayCommand : IBotCommand
             .Where(e => LevelResolver.Resolve(e) == levelId)
             .ToList();
 
-    private static string GroupKeyOf(Element e)
+    private static string GroupKeyOf(Element e, bool byType)
     {
-        var comments = e.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.AsString();
-        if (!string.IsNullOrWhiteSpace(comments)) return comments;
+        if (!byType)
+        {
+            var comments = e.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.AsString();
+            if (!string.IsNullOrWhiteSpace(comments)) return comments;
+        }
 
-        // Tanpa Comments, nama tipe masih lebih berguna daripada satu baris
-        // "(tanpa keterangan)" yang menampung segalanya.
+        // Nama tipe: tujuan langsung `--type`, sekaligus cadangan saat Comments
+        // kosong. Cadangan itu tetap lebih berguna daripada satu baris
+        // "(tanpa keterangan)" yang menampung segalanya — dan karena dasar
+        // pengelompokan sekarang dicetak di balasannya, jatuh ke sini tidak lagi
+        // menyamar sebagai pengelompokan per Comments.
         var typeId = e.GetTypeId();
         if (typeId != ElementId.InvalidElementId)
         {

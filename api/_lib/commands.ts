@@ -115,9 +115,15 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: 'count', role: 'viewer', section: 'query', inMenu: true, addin: true,
     aliases: { id: ['hitung'] },
-    usage: { id: '/count L1 · /count L1 lighting --detail', en: '/count L1 · /count L1 lighting --detail' },
+    usage: {
+      id: '/count L1 · /count L1 lighting --detail · /count L1 --csv',
+      en: '/count L1 · /count L1 lighting --detail · /count L1 --csv',
+    },
   },
-  { name: 'tray', role: 'viewer', section: 'query', inMenu: true, addin: true, usage: { id: '/tray L1', en: '/tray L1' } },
+  {
+    name: 'tray', role: 'viewer', section: 'query', inMenu: true, addin: true,
+    usage: { id: '/tray L1 · /tray L1 --type', en: '/tray L1 · /tray L1 --type' },
+  },
   { name: 'panel', role: 'viewer', section: 'query', inMenu: true, addin: true, usage: { id: '/panel LP-01', en: '/panel LP-01' } },
   { name: 'find', role: 'viewer', section: 'query', inMenu: true, addin: true, aliases: { id: ['cari'] }, usage: { id: '/find MARK-123', en: '/find MARK-123' } },
   { name: 'load', role: 'viewer', section: 'query', inMenu: true, addin: true, aliases: { id: ['beban'] }, usage: { id: '/load L1', en: '/load L1' } },
@@ -188,6 +194,7 @@ export function parseCommand(text: string): { spec: CommandSpec | null; raw: str
  */
 export const KNOWN_FLAGS = new Set([
   'series', 'disc', 'discipline', 'groups', 'grup', 'detail', '3d', 'all',
+  'csv', 'type',
 ]);
 
 /**

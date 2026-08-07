@@ -10,12 +10,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import * as db from '../_lib/db';
-import { authorized } from '../_lib/machineauth';
+import { authorize } from '../_lib/machineauth';
 import { sweepQuietly } from '../_lib/sweep';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
-  if (!authorized(req)) return res.status(401).json({ error: 'unauthorized' });
+
+  const caller = await authorize(req);
+  if (!caller) return res.status(401).json({ error: 'unauthorized' });
 
   const body = (req.body ?? {}) as {
     activeDoc?: string | null;
@@ -32,14 +34,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // bukan cuma pilihan project, melainkan heartbeat: PC-nya langsung terbaca
     // offline dan tidak satu pun job pernah diambil lagi.
     const withProjects = await db.projectSelectionReady();
+    const seenAt = new Date().toISOString();
 
     await db.updateMachine({
-      last_seen_at: new Date().toISOString(),
+      last_seen_at: seenAt,
       active_doc: body.activeDoc ?? null,
       revit_version: body.revitVersion ?? null,
       addin_version: body.addinVersion ?? null,
       ...(withProjects ? { open_docs: body.openDocs ?? [] } : {}),
     });
+
+    // Catatan KEDUA, dan urutannya disengaja: baris di `machines` hanya membuat
+    // panel jujur tentang PC mana yang hidup. Yang benar-benar menentukan
+    // — /status, /project, dan penyapu — tetap `machine_state` di atas.
+    //
+    // Tanpa baris ini, PC yang baru didaftarkan admin akan selamanya tampil
+    // "belum pernah terlihat" di panel walaupun ia sedang polling tiap 4 detik,
+    // dan itu kebohongan yang persis menghalangi satu-satunya kegunaan tabel itu
+    // sekarang: memastikan token barunya benar-benar dipakai.
+    if (caller.kind === 'row') {
+      await db.touchMachine(caller.machine.id, {
+        last_seen_at: seenAt,
+        active_doc: body.activeDoc ?? null,
+        revit_version: body.revitVersion ?? null,
+        addin_version: body.addinVersion ?? null,
+        open_docs: body.openDocs ?? [],
+      });
+    }
 
     // Bersihkan yang sudah lewat expires_at sebelum mengambil job baru,
     // supaya command basi tidak tiba-tiba jalan setelah Revit dibuka lagi.

@@ -22,7 +22,7 @@ import { createUploadUrl, objectPath } from '../_lib/storage';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
-  if (!authorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (!(await authorized(req))) return res.status(401).json({ error: 'unauthorized' });
 
   const body = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})) as {
     id?: string;
