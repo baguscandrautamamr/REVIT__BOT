@@ -205,6 +205,10 @@ public sealed class CommandHandler : IExternalEventHandler
     /// SEMUA yang terbuka; yang di layar tidak lagi berpengaruh, dan tidak ada
     /// dokumen yang diaktifkan diam-diam.
     ///
+    /// Sudah diuji terhadap Revit sungguhan: export (PDF/PNG) pada dokumen yang
+    /// TIDAK aktif memang berhasil, selama dokumennya masih terbuka. Tidak perlu
+    /// mengaktifkannya, dan karena itu layar orang di depan Revit tidak berpindah.
+    ///
     /// Project yang diminta tapi sudah ditutup TIDAK jatuh ke dokumen lain.
     /// Mengerjakannya di project terdekat berarti mengirim gambar kerja dari
     /// model yang salah — persis kegagalan yang paling mahal di sistem ini,

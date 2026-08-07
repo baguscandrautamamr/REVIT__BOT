@@ -184,6 +184,16 @@ disentuh. Project yang sudah ditutup TIDAK jatuh ke dokumen terdekat: ia dijawab
 dengan daftar yang ada, karena mengerjakan project yang salah menghasilkan gambar
 kerja yang terlihat benar.
 
+**Bot tidak pernah membuka file dari disk.** Yang bisa dipilih hanya yang sudah
+terbuka di Revit — begitu file-nya ditutup, pilihannya basi dan dijawab dengan
+daftar yang ada. Itu batas yang disengaja: membuka file Revit lewat kode berarti
+menyita PC-nya selama beberapa menit, untuk permintaan yang dikirim dari HP oleh
+orang yang tidak melihat bahwa itu sedang terjadi.
+
+Sudah diuji terhadap model sungguhan: export pada file yang **tidak aktif** —
+tidak di layar — berhasil, selama file itu masih terbuka. Layar orang yang duduk
+di depan Revit tidak berpindah.
+
 **Butuh migrasi `004_project_selection.sql`**, dijalankan sekali di Supabase SQL
 Editor. Kalau belum dijalankan bot tetap bekerja seperti sebelumnya dan `/project`
 mengatakan apa yang kurang — server memeriksa kolomnya lebih dulu, sebab kolom
@@ -240,13 +250,25 @@ tampilan.
 | Server (webhook, claim, report, panel, health) | Lengkap, `npm run check` hijau |
 | Dua bahasa + dua tema | Lengkap, `check-i18n` hijau |
 | Panel web / Mini App | Lengkap, dirender & diuji di Chromium |
-| Add-in Revit | Ditulis lengkap, **belum dikompilasi terhadap `RevitAPI.dll` asli** |
-| Command di add-in | 14 dari 17 jalan — lihat tabel di bawah |
+| Add-in Revit | Dikompilasi tiap push lewat workflow `addin` (reference assembly NuGet) |
+| Command di add-in | 16 dari 19 jalan — lihat tabel di bawah |
 
 ### Command yang sudah ada di add-in
 
-`/levels` `/sheets` `/warnings` `/count` `/tray` `/find` `/panel` `/load`
-`/pdf` `/png` `/dwg` `/ifc` `/nwc` `/schedule`
+`/levels` `/sheets` `/series` `/views` `/warnings` `/count` `/tray` `/find`
+`/panel` `/load` `/pdf` `/png` `/dwg` `/ifc` `/nwc` `/schedule`
+
+### Yang sudah diverifikasi terhadap model asli
+
+Bukan cuma compile — angkanya dicocokkan dengan model dan panel schedule
+sungguhan (proyek elektrikal, ±25 sheet A1, 92 circuit):
+
+| Yang diuji | Hasil |
+|---|---|
+| `/panel` total & per circuit | Cocok dengan panel schedule: 132.082 VA, `(D)/107` = 600 VA |
+| `/load` sumber angka | `Electrical Data` memang tempat bebannya; `Apparent Load` di instance kosong |
+| `/series` memisahkan LV/ELV | `SERIES ORDER` vs `SERIES ORDER EE` memang pembedanya |
+| `/project` + export | Export berhasil pada file yang TIDAK aktif, selama file-nya masih terbuka |
 
 ### Yang belum, dan kenapa
 
