@@ -33,6 +33,7 @@
  *  11. Batas sheet per role tidak bisa dilewati lewat `/pdf --series`
  *  12. Export panjang tidak dibunuh penyapu selama add-in masih mengerjakannya
  *  13. Hasil yang tiba sesudah job disapu tetap dikirim, bukan dibuang
+ *  14. Satu Revit, beberapa file: tiap user memilih project-nya sendiri
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -879,6 +880,91 @@ async function main() {
       jobStatus(rejected.id) === 'failed' &&
       sent.filter((s) => s.method === 'sendDocument').length === sends,
       String(jobStatus(rejected.id)));
+  }
+
+  console.log('\n14. Pilih project saat Revit membuka beberapa file sekaligus');
+  {
+    // Satu Revit, tiga file terbuka. Sebelum ini yang menentukan project selalu
+    // dokumen yang AKTIF — jadi orang yang duduk di depan PC menentukan project
+    // siapa pun yang mengirim perintah dari HP, tanpa tahu ia menentukannya.
+    const webhook = (await import('../api/telegram/webhook')).default;
+    const claim = (await import('../api/machine/claim')).default;
+
+    tables.machine_state.length = 0;
+    tables.machine_state.push({
+      id: 1, last_seen_at: new Date().toISOString(), active_doc: 'PROJECT-C.rvt',
+      revit_version: '2025', addin_version: '0.1.0', is_paused: false, bot_enabled: true,
+      open_docs: ['PROJECT-A.rvt', 'PROJECT-B.rvt', 'PROJECT-C.rvt'],
+    });
+
+    const CHAT_A = CHAT + 500;
+    const CHAT_B = CHAT + 501;
+    for (const id of [CHAT_A, CHAT_B]) {
+      tables.bot_users.push({
+        chat_id: id, name: `User ${id}`, role: 'admin', is_active: true,
+        lang: 'id', theme: 'auto', project: null, created_at: new Date().toISOString(),
+      });
+    }
+
+    async function send(chatId: number, text: string, updateId: number) {
+      sent.length = 0;
+      const before = tables.commands.length;
+      await invoke(webhook, {
+        headers: { 'x-telegram-bot-api-secret-token': 'simulasi' },
+        body: { update_id: updateId, message: { chat: { id: chatId }, from: { id: chatId }, text } },
+      });
+      return tables.commands.slice(before).at(-1) as Row | undefined;
+    }
+
+    // Add-in melaporkan daftar file terbukanya lewat heartbeat.
+    await invoke(claim, {
+      body: { activeDoc: 'PROJECT-C.rvt', busy: false, openDocs: ['PROJECT-A.rvt', 'PROJECT-B.rvt'] },
+      headers: auth,
+    });
+    check('/claim menyimpan daftar file terbuka',
+      JSON.stringify((tables.machine_state[0] as Row).open_docs) === '["PROJECT-A.rvt","PROJECT-B.rvt"]',
+      JSON.stringify((tables.machine_state[0] as Row).open_docs));
+
+    // Kembalikan tiga file untuk sisa skenario.
+    (tables.machine_state[0] as Row).open_docs = ['PROJECT-A.rvt', 'PROJECT-B.rvt', 'PROJECT-C.rvt'];
+
+    await send(CHAT_A, '/project', 40);
+    const keyboard = sent.find((s) => s.method === 'sendMessage');
+    check('/project menawarkan tombol pilihan', !!keyboard, String(sent.length));
+
+    // Pilih lewat argumen — cocok sebagian, satu-satunya.
+    await send(CHAT_A, '/project PROJECT-A', 41);
+    const userA = tables.bot_users.find((u) => u.chat_id === CHAT_A) as Row;
+    check('pilihan tersimpan per user', userA.project === 'PROJECT-A.rvt', String(userA.project));
+
+    await send(CHAT_B, '/project PROJECT-B', 42);
+    const userB = tables.bot_users.find((u) => u.chat_id === CHAT_B) as Row;
+    check('user lain punya pilihan sendiri', userB.project === 'PROJECT-B.rvt', String(userB.project));
+
+    // Inti fitur: job masing-masing user tertuju ke project MASING-MASING,
+    // bukan ke dokumen yang kebetulan aktif di layar (PROJECT-C).
+    const jobA = await send(CHAT_A, '/levels', 43);
+    const jobB = await send(CHAT_B, '/levels', 44);
+    check('job user A tertuju ke project A',
+      (jobA?.payload as Record<string, unknown>)?.docTitle === 'PROJECT-A.rvt',
+      JSON.stringify(jobA?.payload));
+    check('job user B tertuju ke project B — bukan yang aktif di layar',
+      (jobB?.payload as Record<string, unknown>)?.docTitle === 'PROJECT-B.rvt',
+      JSON.stringify(jobB?.payload));
+
+    // Kembali mengikuti dokumen aktif.
+    (tables.bot_users.find((u) => u.chat_id === CHAT_A) as Row).project = null;
+    const jobBack = await send(CHAT_A, '/levels', 45);
+    check('tanpa pilihan, kembali ikut dokumen aktif',
+      (jobBack?.payload as Record<string, unknown>)?.docTitle === 'PROJECT-C.rvt',
+      JSON.stringify(jobBack?.payload));
+
+    // Nama yang cocok ke dua file tidak ditebak.
+    await send(CHAT_A, '/project PROJECT', 46);
+    check('nama ambigu ditolak, tidak ditebak',
+      (tables.bot_users.find((u) => u.chat_id === CHAT_A) as Row).project === null &&
+      sent.some((s) => s.text?.includes('cocok ke 3')),
+      sent.map((s) => s.text).join(' | ').slice(0, 60));
   }
 
   server.close();

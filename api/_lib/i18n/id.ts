@@ -155,6 +155,26 @@ export const id = {
 
   // Dipakai `scripts/set-commands.ts` → setMyCommands(language_code: 'id').
   // Telegram membatasi deskripsi 3–256 karakter dan nama command a-z 0-9 _.
+  project: {
+    prompt: 'Pilih project yang dituju semua command berikutnya:',
+    // Menyebut project mana yang menerima — bukan cuma "tersimpan". Perintah
+    // berikutnya akan menuju ke sana, dan itu satu-satunya hal yang perlu
+    // dipastikan orangnya sebelum mengetik /pdf.
+    selected: (p) => `✅ Project aktif untukmu: ${p.name}\nSemua command berikutnya tertuju ke sini.`,
+    followActive: '✅ Mengikuti project yang sedang aktif di Revit.',
+    followActiveButton: 'Ikut yang aktif di Revit',
+    noneOpen:
+      'Revit tidak melaporkan satu pun project terbuka. Kalau Revit memang terbuka, ' +
+      'kemungkinan add-in-nya versi lama — daftar file baru dikirim mulai versi yang mendukung /project.',
+    notFound: (p) => `Project "${p.term}" tidak ada di daftar yang terbuka.`,
+    ambiguous: (p) => `"${p.term}" cocok ke ${p.n} project sekaligus — sebut lebih lengkap.`,
+    // Daftar file bisa berubah antara pesan dikirim dan tombol ditekan.
+    stale: 'Daftar project sudah berubah. Kirim /project lagi.',
+    needsMigration:
+      'Pilihan project belum aktif: migrasi 004_project_selection.sql belum dijalankan di Supabase. ' +
+      'Sementara ini semua command tertuju ke project yang sedang aktif di Revit.',
+  },
+
   commandDesc: {
     status: 'Status PC, model terbuka, antrean',
     levels: 'Daftar level di model',
@@ -163,6 +183,7 @@ export const id = {
     views: 'Daftar view 3D + perintah /png siap salin',
     warnings: 'Warning aktif di model',
     queue: 'Antrean command saat ini',
+    project: 'Pilih project yang dituju command (multi-file)',
     help: 'Daftar command sesuai role kamu',
     count: 'Rekap jumlah elemen MEP per lantai',
     tray: 'Panjang cable tray per lantai',

@@ -22,6 +22,11 @@ export interface BotUser {
   lang: LangPref;
   theme: ThemePref;
   created_at: string;
+  /**
+   * Judul project pilihan user; null = ikut dokumen aktif di Revit.
+   * Ada hanya setelah migrasi 004 — lihat `projectSelectionReady`.
+   */
+  project?: string | null;
 }
 
 export interface CommandRow {
@@ -49,6 +54,35 @@ export interface MachineState {
   addin_version: string | null;
   is_paused: boolean;
   bot_enabled: boolean;
+  /** Ada hanya setelah migrasi 004 dijalankan — lihat `projectSelectionReady`. */
+  open_docs?: string[] | null;
+}
+
+/**
+ * Migrasi 004 (pilihan project per user) sudah dijalankan atau belum.
+ *
+ * Diperiksa, bukan diasumsikan. Kolom yang belum ada membuat PostgREST menolak
+ * SELURUH request — bukan cuma bagian yang menyentuhnya — jadi tanpa
+ * pemeriksaan ini satu langkah SQL yang terlewat mematikan `/claim`, dan
+ * bersamanya seluruh bot. Repo ini sudah pernah kehilangan `003_storage.sql`
+ * dengan cara yang sama.
+ *
+ * Hasilnya di-cache: kolomnya tidak akan muncul dan hilang di tengah jalan, dan
+ * memeriksanya tiap 4 detik hanya menambah satu request ke setiap heartbeat.
+ */
+let projectColumns: boolean | null = null;
+
+export async function projectSelectionReady(): Promise<boolean> {
+  if (projectColumns !== null) return projectColumns;
+  try {
+    await rest('machine_state?id=eq.1&limit=1&select=open_docs');
+    await rest('bot_users?limit=1&select=project');
+    projectColumns = true;
+  } catch {
+    console.warn('[db] migrasi 004 belum dijalankan — pilihan project dimatikan');
+    projectColumns = false;
+  }
+  return projectColumns;
 }
 
 async function rest<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -113,6 +113,7 @@ public sealed class QueueWorker
                     // Membacanya langsung dari Revit di sini = pelanggaran
                     // aturan thread di atas.
                     ActiveDoc = _handler.LastKnownDocTitle,
+                    OpenDocs = _handler.OpenDocTitles.ToList(),
                     RevitVersion = _handler.RevitVersion,
                     AddinVersion = AddinVersion,
                     Busy = busy,

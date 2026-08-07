@@ -236,6 +236,15 @@ public static class BridgeClient
 public sealed class HeartbeatInfo
 {
     public string? ActiveDoc { get; set; }
+
+    /// <summary>
+    /// Judul SEMUA project yang terbuka di sesi Revit ini.
+    ///
+    /// Dikirim tiap heartbeat, bukan diminta saat dibutuhkan: `/project` harus
+    /// bisa menampilkan tombol pilihannya seketika, dan daftar yang butuh satu
+    /// siklus polling untuk muncul akan berhenti dipakai orang.
+    /// </summary>
+    public List<string> OpenDocs { get; set; } = new();
     public string? RevitVersion { get; set; }
     public string? AddinVersion { get; set; }
 

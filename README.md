@@ -80,6 +80,7 @@ supabase/
   migrations/001_init.sql     tabel + machine_state
   migrations/002_security.sql RLS — service role saja
   migrations/003_storage.sql  catatan bucket job-files (bucket-nya dibuat server)
+  migrations/004_project_selection.sql  pilihan project per user (multi-file)
 scripts/
   deploy-bot.ps1    clone + npm ci + deploy konfigurasi bot (Windows)
   set-commands.ts   pasang webhook + menu Telegram per bahasa + scope admin
@@ -157,6 +158,37 @@ Batas `maxSheets` per role ditegakkan di ADD-IN untuk jalur ini, bukan di server
 pemeriksaan di server menghitung panjang daftar sheet yang diketik, dan
 permintaan per-grup cuma satu kata. Lihat `api/telegram/webhook.ts` di sekitar
 `byGroup`, dan penjaganya di `scripts/simulate-job.ts` §11.
+
+---
+
+## Satu Revit, beberapa file terbuka
+
+```bash
+/project                # tombol pilih dari file yang sedang terbuka
+/project WAREHOUSE      # pilih langsung tanpa menekan tombol
+```
+
+Pilihannya melekat **per user**: kamu bisa bekerja di project A sementara orang
+lain di project B, pada satu Revit yang sama. Tanpa pilihan, semua command ikut
+dokumen yang sedang aktif di layar — perilaku sebelum fitur ini ada.
+
+Kenapa ini bukan sekadar kenyamanan: sebelumnya orang yang duduk di depan PC
+menentukan project siapa pun yang mengirim perintah dari HP — tanpa tahu ia
+sedang menentukannya, dan si pengirim tidak punya cara melihat maupun
+mengubahnya. Lebih buruk, job yang dibekukan ke project A akan DITOLAK
+("Model tidak cocok") kalau ia kebetulan pindah tab sebelum Revit mengambilnya.
+
+Job sekarang mencari dokumennya berdasarkan judul di antara SEMUA yang terbuka.
+Tidak ada dokumen yang diaktifkan diam-diam — layar orang di depan Revit tidak
+disentuh. Project yang sudah ditutup TIDAK jatuh ke dokumen terdekat: ia dijawab
+dengan daftar yang ada, karena mengerjakan project yang salah menghasilkan gambar
+kerja yang terlihat benar.
+
+**Butuh migrasi `004_project_selection.sql`**, dijalankan sekali di Supabase SQL
+Editor. Kalau belum dijalankan bot tetap bekerja seperti sebelumnya dan `/project`
+mengatakan apa yang kurang — server memeriksa kolomnya lebih dulu, sebab kolom
+yang belum ada membuat PostgREST menolak SELURUH request, dan yang mati bukan
+cuma fiturnya melainkan heartbeat.
 
 ---
 
