@@ -64,6 +64,7 @@ api/
     state.ts        data untuk panel web (butuh initData sah)
     users.ts        tambah/cabut akses user — admin saja, dari panel
     machines.ts     daftarkan/cabut PC Revit — token dibuat server, tanpa env var
+    routing.ts      (di _lib) PC tujuan per user: pc | legacy | unassigned
 addin/                DLL siap pasang ada di tab Actions → workflow "addin"
   App.cs            OnStartup: buat ExternalEvent, start worker
   Polling/          loop polling — TANPA Revit API
@@ -84,6 +85,7 @@ supabase/
   migrations/003_storage.sql  catatan bucket job-files (bucket-nya dibuat server)
   migrations/004_project_selection.sql  pilihan project per user (multi-file)
   migrations/005_machines.sql  daftar PC Revit + token-nya (opsional, lihat di dalamnya)
+  migrations/006_machine_routing.sql  job diarahkan ke PC pemiliknya (opsional)
 scripts/
   deploy-bot.ps1    clone + npm ci + deploy konfigurasi bot (Windows)
   set-commands.ts   pasang webhook + menu Telegram per bahasa + scope admin
@@ -270,16 +272,89 @@ dipindahkan ke tabel membuat satu-satunya PC yang ada langsung dijawab 401 — d
 karena add-in hanya mencatatnya di berkas log di PC itu, yang terlihat dari
 Telegram cuma "PC offline" untuk PC yang justru menyala.
 
-> ⚠️ **Belum mengarahkan job.** Tabel ini membuat beberapa token diterima, tapi
-> `claimNextCommand()` masih mengambil job pending mana pun tanpa melihat siapa
-> yang meminta. Memasang **PC kedua yang sungguhan** sebelum routing per-PC ada
-> akan membuat PC itu mencuri job milik user PC pertama. Sampai routing itu jadi,
-> daftar ini gunanya: mengganti token PC yang ada tanpa redeploy, dan mencabutnya
-> satu per satu. Peringatan yang sama tertulis di panelnya sendiri.
-
 **Butuh migrasi `005_machines.sql`.** Kalau belum dijalankan, bot bekerja persis
 seperti sebelumnya lewat `MACHINE_TOKEN`, dan panel **mengatakan** apa yang
 kurang alih-alih hanya mematikan tombolnya.
+
+---
+
+## Setiap user pakai Revit di PC-nya sendiri
+
+Job diarahkan ke **PC pemiliknya**. Rantainya:
+
+```
+chat_id (dari Telegram, tidak bisa dipalsukan)
+   ↓
+bot_users.machine_id      ← admin memasangkannya lewat panel
+   ↓
+commands.machine_id       ← dibekukan saat job dibuat
+   ↓
+hanya PC itu yang mengklaimnya
+```
+
+### Tiga keadaan, dan tidak satu pun jadi jurang
+
+| PC terdaftar | Yang terjadi |
+|---|---|
+| **0** | Perilaku lama sepenuhnya. Semua dibaca dari `machine_state`, job tidak dialamatkan |
+| **1** | Semua job ke PC itu — **tanpa perlu satu penugasan pun diisi**. Tidak ada yang bisa salah pilih, jadi tidak ada yang perlu dipilih |
+| **≥2** | User dengan penugasan dapat PC-nya. User **tanpa** penugasan **ditolak dengan kalimat** beserta daftar PC yang ada |
+
+Keadaan ketiga itu yang paling penting, dan penolakannya disengaja: menebak
+salah satu PC berarti mengerjakan model orang lain lalu mengirimkannya sebagai
+hasil yang sah — dan tidak ada apa pun di balasannya yang akan menandai bahwa
+angka atau gambar kerja itu dari project yang salah. Penjagaan `expectedDocTitle`
+di add-in pun **lolos** kalau judul modelnya kebetulan sama.
+
+Keadaan kedua itu yang membuat pemasangan tidak punya langkah "sekarang semuanya
+berhenti sampai admin menugaskan semua orang".
+
+### Yang jadi per-PC, dan yang tetap global
+
+| Per-PC | Global |
+|---|---|
+| Online / terakhir terlihat | `bot_enabled` — kill switch semua PC sekaligus |
+| `/pause` `/resume` | Kedaluwarsa job (`expires_at`) |
+| Model terbuka + `/project` | |
+| `/status` `/queue` | |
+| Penyapuan job mati | |
+
+**`/pause` hanya menghentikan PC pengirimnya.** Menghentikan Revit orang lain
+dari HP tanpa mereka tahu adalah kejutan yang tidak bisa dijelaskan dari sisi
+mereka: job tetap masuk antrean dan tidak pernah jalan.
+
+**Penyapuan wajib per-PC**, dan ini kegagalan termahal kalau dilewat: `/claim`
+dari PC yang idle melaporkan `busy: false`. Tanpa pembatasan, itu terbaca sebagai
+"tidak ada yang mengerjakan job apa pun" — lalu export 25 sheet di PC lain
+ditutup sebagai terlantar, tepat sebelum hasilnya tiba.
+
+### `for update skip locked` ternyata tidak perlu
+
+`docs/CATATAN-ARSITEKTUR.md` §11 dan komentar lama di `db.claimNextCommand`
+menyebutnya sebagai keharusan untuk PC kedua. Untuk topologi ini **tidak**: satu
+user dipasangkan ke tepat satu PC, dan setiap PC hanya melihat job yang
+dialamatkan kepadanya — jadi dua PC tidak akan pernah memperebutkan baris yang
+sama. Trik "PATCH dengan filter `status=pending`" yang sudah ada tetap cukup, dan
+masih berguna untuk satu kasus yang tersisa: satu PC dengan dua sesi Revit.
+
+### Urutan pemasangan — jangan dibalik
+
+```
+1. Daftarkan PC yang SUDAH berjalan (PC admin) di panel
+2. Pasang tokennya:  .\set-token.ps1 -Token "…"   → TUTUP & BUKA Revit
+3. Pastikan ia hijau di panel  ← bukti tokennya benar-benar dipakai
+4. Baru tambah PC user berikutnya, satu per satu
+5. Setelah ada PC kedua: pasangkan tiap user ke PC-nya di bagian User
+```
+
+Langkah 3 tidak boleh dilewat. `MACHINE_TOKEN` masih berlaku sebagai jalur
+cadangan, jadi PC admin **tetap jalan** walau langkah 2 belum dikerjakan — tapi
+lewat jalur itu ia tidak punya identitas, dan job yang dialamatkan ke baris
+"PC Admin" tidak akan pernah diambil siapa pun. Panel yang menampilkannya
+"belum pernah terlihat" adalah tanda bahwa langkah 2 masih tertunda.
+
+**Butuh migrasi `006_machine_routing.sql`.** Kalau belum dijalankan, bot bekerja
+persis seperti sebelumnya — satu antrean, dilayani PC mana pun.
 
 ---
 

@@ -59,6 +59,7 @@ async function add(req: VercelRequest, res: VercelResponse) {
     chatId?: unknown;
     name?: unknown;
     role?: unknown;
+    machineId?: unknown;
   };
 
   // Chat ID Telegram bisa lebih besar dari 2^32, jadi rentangnya diperiksa
@@ -76,6 +77,28 @@ async function add(req: VercelRequest, res: VercelResponse) {
   const role = body.role === 'admin' ? 'admin' : 'viewer';
 
   const user = await db.upsertUser({ chat_id: chatId, name, role });
+
+  // Penugasan PC ditulis TERPISAH, bukan lewat upsert di atas, dan itu bukan
+  // kemalasan: `upsertUser` dipakai juga untuk menghidupkan kembali user yang
+  // pernah dicabut, dan yang ditimpanya hanya kolom yang ikut dikirim. Menyelipkan
+  // `machine_id` ke sana berarti membuka ulang akses seseorang otomatis
+  // MENGHAPUS penugasan PC-nya — hilangnya tidak terlihat sampai orang itu
+  // mengirim perintah dan dijawab "belum dipasangkan".
+  if (await db.routingReady()) {
+    const raw = body.machineId;
+    const machineId = typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+
+    // Id karangan tidak boleh tersimpan: `targetFor` akan mengabaikan penugasan
+    // yang tidak menunjuk PC mana pun, lalu user itu dijawab "belum dipasangkan"
+    // padahal panel menampilkannya sebagai sudah dipasangkan.
+    if (machineId !== null && !(await db.listMachines()).some((m) => m.id === machineId)) {
+      return res.status(400).json({ error: 'bad_machine' });
+    }
+
+    await db.updateUser(chatId, { machine_id: machineId });
+    return res.status(200).json({ ok: true, user: slim({ ...user, machine_id: machineId }) });
+  }
+
   return res.status(200).json({ ok: true, user: slim(user) });
 }
 
@@ -93,5 +116,11 @@ async function revoke(req: VercelRequest, res: VercelResponse, meChatId: number)
 }
 
 function slim(u: db.BotUser) {
-  return { chatId: u.chat_id, name: u.name, role: u.role, isActive: u.is_active };
+  return {
+    chatId: u.chat_id,
+    name: u.name,
+    role: u.role,
+    isActive: u.is_active,
+    machineId: u.machine_id ?? null,
+  };
 }

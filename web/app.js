@@ -241,6 +241,22 @@ function renderStatus() {
     return;
   }
 
+  // Nama PC yang statusnya ditampilkan. Kosong selama masih satu PC.
+  document.getElementById('status-pc').textContent = state.pcName ?? '';
+
+  // Belum dipasangkan bukan sama dengan PC mati, dan bedanya menentukan apa yang
+  // harus dikerjakan orangnya: yang pertama minta admin, yang kedua buka Revit.
+  if (state.unassigned) {
+    dot.className = 'dot dot--warn';
+    title.textContent = i18n.t('status.offline');
+    hint.textContent = i18n.t('status.unassigned');
+    hint.hidden = false;
+    for (const id of ['kv-model', 'kv-seen', 'kv-revit', 'kv-addin']) {
+      document.getElementById(id).textContent = '—';
+    }
+    return;
+  }
+
   hint.hidden = true;
   const online = state.online === true;
   dot.className = `dot ${online ? (state.isPaused ? 'dot--warn' : 'dot--ok') : 'dot--err'}`;
@@ -340,6 +356,17 @@ function renderUsers() {
 
     li.append(name, id, tag);
 
+    // PC yang melayani user ini. Disebut HANYA kalau ada lebih dari satu PC —
+    // selama masih satu, "belum dipasangkan" akan terbaca sebagai masalah yang
+    // perlu diperbaiki padahal justru tidak ada yang perlu dipilih.
+    if ((machines ?? []).length > 1) {
+      const pc = document.createElement('span');
+      pc.className = 'muted small';
+      pc.textContent = machines.find((m) => m.id === u.machineId)?.name
+        ?? i18n.t('users.noMachine');
+      li.append(pc);
+    }
+
     // Diri sendiri tidak bisa dicabut — server menolaknya juga, tapi tombol
     // yang selalu gagal lebih membingungkan daripada tombol yang tidak ada.
     if (u.chatId === state?.chatId) {
@@ -434,6 +461,37 @@ function renderMachines() {
   empty.hidden = rows.length > 0;
 
   document.getElementById('machine-form').hidden = machinesMeta ? !machinesMeta.ready : false;
+  syncMachineOptions();
+}
+
+/**
+ * Isi dropdown "PC Revit" di form user dari daftar PC.
+ *
+ * Pilihan yang sedang dipilih dipertahankan kalau PC-nya masih ada. Tanpa itu,
+ * daftar yang dimuat ulang tiap 15 detik akan mengembalikan pilihan admin ke
+ * "ikut aturan" di tengah ia mengisi form — dan yang tersimpan bukan yang
+ * terlihat di layar saat ia menekan Tambah.
+ */
+function syncMachineOptions() {
+  const select = document.getElementById('user-machine');
+  const rows = machines ?? [];
+  const keep = select.value;
+
+  const options = [
+    Object.assign(document.createElement('option'), {
+      value: '',
+      textContent: i18n.t('users.machineAuto'),
+    }),
+    ...rows.filter((m) => m.isActive).map((m) =>
+      Object.assign(document.createElement('option'), { value: m.id, textContent: m.name })),
+  ];
+
+  select.replaceChildren(...options);
+  if (options.some((o) => o.value === keep)) select.value = keep;
+
+  // Selama masih satu PC, tidak ada yang perlu dipilih — dan dropdown berisi satu
+  // pilihan hanya mengundang orang mengira ada keputusan yang harus diambil.
+  select.hidden = rows.length < 2;
 }
 
 async function submitMachine(event) {
@@ -497,6 +555,7 @@ function saveError(code) {
     self: 'err.self',
     not_found: 'err.notFound',
     bad_id: 'err.notFound',
+    bad_machine: 'err.badMachine',
     needs_migration: 'machines.needsMigration',
   };
   return i18n.t(known[code] ?? 'err.save');
@@ -507,6 +566,7 @@ async function submitUser(event) {
   const chatId = document.getElementById('user-chatid');
   const name = document.getElementById('user-name');
   const role = document.getElementById('user-role');
+  const machine = document.getElementById('user-machine');
 
   try {
     const res = await fetch('/api/panel/users', {
@@ -516,6 +576,9 @@ async function submitUser(event) {
         chatId: Number(chatId.value.trim()),
         name: name.value.trim(),
         role: role.value,
+        // Kosong = ikut aturan (satu PC → otomatis; beberapa PC → user itu
+        // dijawab "belum dipasangkan", bukan ditebak).
+        machineId: machine.value || null,
       }),
     });
     const data = await res.json().catch(() => ({}));

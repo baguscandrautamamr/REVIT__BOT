@@ -6,7 +6,7 @@ import { COMMANDS, notImplemented, type Section } from './commands';
 import { code, codeBlocks, mdv2 } from './telegram';
 import { translator, type Locale } from './i18n';
 import { UTC_OFFSET_MINUTES, isOnline } from './limits';
-import type { BotUser, CommandRow, MachineState, Role } from './db';
+import type { BotUser, CommandRow, MachineView, Role } from './db';
 
 const SECTION_KEY: Record<Section, string> = {
   info: 'help.sectionInfo',
@@ -53,12 +53,18 @@ export function helpText(locale: Locale, role: Role): string {
 
 export function statusText(
   locale: Locale,
-  machine: MachineState,
+  machine: MachineView,
   queue: { pending: CommandRow[]; running: CommandRow[] },
 ): string {
   const t = translator(locale);
   const online = isOnline(machine.last_seen_at);
   const lines: string[] = [`*${mdv2(t('status.title'))}*`, ''];
+
+  // Nama PC disebut HANYA kalau ia benar-benar punya baris sendiri (`id` tidak
+  // null). Di era satu PC, "PC: PC Revit" cuma satu baris tanpa informasi — tapi
+  // begitu ada beberapa, tidak menyebutnya berarti tiga orang membaca tiga status
+  // berbeda yang terlihat identik, dan tidak ada cara tahu yang mana milik siapa.
+  if (machine.id !== null) lines.push(mdv2(t('status.pc', { name: machine.name })));
 
   lines.push(
     mdv2(

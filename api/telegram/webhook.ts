@@ -30,6 +30,7 @@ import {
   usersText,
 } from '../_lib/reply';
 import { PROJECT_PREFIX, handleProject, handleProjectCallback, targetProject } from '../_lib/projects';
+import { scopeOf, targetFor, type Target } from '../_lib/routing';
 import { closeInChat, sweepQuietly } from '../_lib/sweep';
 import {
   answerCallbackQuery,
@@ -96,10 +97,14 @@ async function onMessage(msg: any, updateId: number): Promise<void> {
     return;
   }
 
-  const machine = await db.getMachine();
+  // `bot_enabled` GLOBAL, dari baris tunggal `machine_state` — kill switch untuk
+  // semua PC sekaligus. Keadaan per-PC (online, paused, model terbuka) datang
+  // dari `target` di bawah, dan keduanya sengaja tidak dicampur: mematikan bot
+  // untuk semua orang dan mem-pause satu PC adalah dua tindakan yang berbeda.
+  const state = await db.getMachine();
   const { spec, raw, args } = parseCommand(text);
 
-  if (!machine.bot_enabled && spec?.name !== 'status') {
+  if (!state.bot_enabled && spec?.name !== 'status') {
     await sendMessage(chatId, mdv2(t('errors.botDisabled')));
     return;
   }
@@ -116,8 +121,28 @@ async function onMessage(msg: any, updateId: number): Promise<void> {
     return;
   }
 
+  // PC tujuan semua command berikutnya. Ditentukan di satu tempat supaya
+  // /status, /project, dan antrean tidak masing-masing menebaknya.
+  const target = await targetFor(user);
+
+  if (target.kind === 'unassigned') {
+    // DITOLAK, bukan ditebak. Memilih salah satu PC berarti mengerjakan model
+    // orang lain lalu mengirimkannya sebagai hasil yang sah — dan tidak ada apa
+    // pun di balasannya yang akan menandai bahwa gambar kerja itu dari project
+    // yang salah. Daftar PC-nya ikut disebut supaya admin tahu apa yang harus
+    // dipasangkan, bukan cuma bahwa ada yang kurang.
+    await sendMessage(
+      chatId,
+      mdv2(
+        t('errors.noMachine') + '\n\n' +
+          target.choices.map((m) => '· ' + m.name).join('\n'),
+      ),
+    );
+    return;
+  }
+
   if (SERVER_SIDE.has(spec.name)) {
-    await serverSide(spec, user, machine, args, tgLang, locale);
+    await serverSide(spec, user, target, args, tgLang, locale);
     return;
   }
 
@@ -131,7 +156,7 @@ async function onMessage(msg: any, updateId: number): Promise<void> {
     return;
   }
 
-  await enqueue(spec, user, machine, args, locale);
+  await enqueue(spec, user, target, args, locale);
 }
 
 /* ── Command yang dijawab langsung ─────────────────────────────────────── */
@@ -139,13 +164,15 @@ async function onMessage(msg: any, updateId: number): Promise<void> {
 async function serverSide(
   spec: CommandSpec,
   user: db.BotUser,
-  machine: db.MachineState,
+  target: Exclude<Target, { kind: 'unassigned' }>,
   args: string[],
   tgLang: string | null,
   locale: Locale,
 ): Promise<void> {
   const t = translator(locale);
   const chatId = user.chat_id;
+  const machine = target.view;
+  const scope = scopeOf(target);
 
   switch (spec.name) {
     case 'help':
@@ -154,14 +181,17 @@ async function serverSide(
       }
       return;
 
+    // Antrean disaring ke PC user ini. Angka gabungan dari beberapa PC akan
+    // membuat orang mengira job-nya menunggu di belakang pekerjaan yang
+    // sebenarnya berjalan di mesin lain, lalu menunggu tanpa alasan.
     case 'status': {
-      const queue = await db.queueSnapshot();
+      const queue = await db.queueSnapshot(scope);
       await sendMessage(chatId, statusText(locale, machine, queue));
       return;
     }
 
     case 'queue': {
-      const queue = await db.queueSnapshot();
+      const queue = await db.queueSnapshot(scope);
       await sendMessage(chatId, queueText(locale, chatId, queue));
       return;
     }
@@ -195,13 +225,17 @@ async function serverSide(
       await sendMessage(chatId, usersText(locale, await db.listUsers()));
       return;
 
+    // Pause menyentuh PC ADMIN SENDIRI, bukan semua PC. Menghentikan Revit orang
+    // lain dari HP tanpa mereka tahu adalah kejutan yang tidak bisa dijelaskan
+    // dari sisi mereka: job tetap masuk antrean dan tidak pernah jalan. Untuk
+    // mematikan semuanya sekaligus, `machine_state.bot_enabled` yang dipakai.
     case 'pause':
-      await db.updateMachine({ is_paused: true });
+      await db.setPaused(machine.id, true);
       await sendMessage(chatId, mdv2(t('admin.paused')));
       return;
 
     case 'resume':
-      await db.updateMachine({ is_paused: false });
+      await db.setPaused(machine.id, false);
       await sendMessage(chatId, mdv2(t('admin.resumed')));
       return;
 
@@ -236,12 +270,13 @@ async function serverSide(
 async function enqueue(
   spec: CommandSpec,
   user: db.BotUser,
-  machine: db.MachineState,
+  pc: Exclude<Target, { kind: 'unassigned' }>,
   args: string[],
   locale: Locale,
 ): Promise<void> {
   const t = translator(locale);
   const chatId = user.chat_id;
+  const machine = pc.view;
 
   const built = buildPayload(spec, args, locale);
   if ('error' in built) {
@@ -299,11 +334,17 @@ async function enqueue(
   const target = targetProject(user, machine);
   const payload = target ? { ...built.payload, docTitle: target } : built.payload;
 
+  // PC tujuan DIBEKUKAN di sini, bersama judul model di atas. Alasannya sama:
+  // kalau admin memindahkan user ini ke PC lain selagi job mengantre, job yang
+  // sudah dibuat tetap dikerjakan PC yang dimaksud waktu ia dibuat. Membacanya
+  // ulang saat klaim berarti satu perubahan penugasan bisa memindahkan pekerjaan
+  // yang sedang berlangsung ke model yang berbeda.
   const job = await db.insertCommand({
     chat_id: chatId,
     command: spec.name,
     payload,
     lang: locale,
+    machine_id: pc.kind === 'pc' ? pc.machineId : null,
   });
 
   // Pesan "⏳" disimpan message_id-nya supaya nanti di-EDIT, bukan ditimpa

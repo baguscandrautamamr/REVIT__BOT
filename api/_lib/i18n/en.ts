@@ -41,6 +41,13 @@ export const en = {
       `Wait ${p.seconds}s more — a heavy command just ran.`,
     pcOffline: (p: Params) =>
       `🔴 PC offline since ${p.since} (${p.ago}).\nYour command stays queued — it runs automatically once Revit is open.`,
+    // Deliberately does not guess a PC. Guessing means working on someone
+    // else's model and delivering it as a legitimate result, with nothing in
+    // the reply to mark that it came from the wrong project.
+    noMachine:
+      'An admin has not linked you to a Revit PC yet, and there is now more than one — ' +
+      'so the bot must not guess which. Ask an admin to link you from the panel. ' +
+      'Registered PCs:',
     noDocument: 'Revit is running but no model is open yet.',
     docMismatch: (p: Params) => `Model mismatch. Currently open: ${p.actual}`,
     levelNotFound: (p: Params) =>
@@ -85,6 +92,7 @@ export const en = {
 
   status: {
     title: '📊 Status',
+    pc: (p: Params) => `PC: ${p.name}`,
     online: (p: Params) => `🟢 PC online (last seen ${p.ago} ago)`,
     offline: (p: Params) => `🔴 PC offline since ${p.since}`,
     model: (p: Params) => `Model: ${p.title}`,

@@ -652,7 +652,7 @@ bawah adalah kode yang harus dirawat tanpa memberi manfaat.
 
 | Pemicu | Tambahan |
 |---|---|
-| PC desktop kedua | Tabel `machines` + klaim atomik `for update skip locked` |
+| PC desktop kedua | Tabel `machines` + `machine_id` di user & job. **`for update skip locked` ternyata tidak perlu** kalau satu user dipasangkan ke tepat satu PC: dua PC tidak akan pernah memperebutkan baris yang sama. Yang wajib justru penyapuan per-PC — lihat §5 pola #6 |
 | Sering bolak-balik >1 dokumen/hari | `open_docs` + pilihan project per user (`004`) |
 | Berkas sering >50 MB | Storage + tabel `artifacts` + signed URL berumur |
 | Butuh audit formal | Kolom log lengkap + retensi |
