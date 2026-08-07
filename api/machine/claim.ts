@@ -71,10 +71,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // satu-satunya cara membedakan export 25 sheet yang memang lama dari job yang
     // mati bersama Revit-nya. Tanpa itu penyapu hanya punya timer, dan timer
     // menutup job yang masih dikerjakan dengan alasan "Revit ditutup".
-    await sweepQuietly({ addinBusy: body.busy === true });
+    // `caller` ikut diteruskan supaya penyapuan hanya menyentuh job PC INI.
+    // Tanpa itu, satu /claim dari PC yang idle (`busy: false`) akan menutup job
+    // PC lain yang justru sedang mengekspor — dengan alasan yang benar untuk
+    // pemanggil dan keliru untuk pemilik job-nya.
+    await sweepQuietly({
+      caller: {
+        machineId: caller.kind === 'row' ? caller.machine.id : null,
+        addinBusy: body.busy === true,
+      },
+    });
 
-    const machine = await db.getMachine();
-    if (machine.is_paused || !machine.bot_enabled) {
+    // `bot_enabled` GLOBAL — kill switch untuk semua PC sekaligus. `is_paused`
+    // per-PC: /pause milik satu orang tidak boleh menghentikan Revit orang lain.
+    // Dua sumber, dan itu memang dua hal yang berbeda.
+    const state = await db.getMachine();
+    const paused = caller.kind === 'row' ? caller.machine.is_paused : state.is_paused;
+
+    if (paused || !state.bot_enabled) {
       return res.status(200).json({ job: null, paused: true });
     }
 
@@ -85,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ job: null, paused: false, busy: true });
     }
 
-    const job = await db.claimNextCommand();
+    const job = await db.claimNextCommand(caller.kind === 'row' ? caller.machine.id : null);
     if (!job) return res.status(200).json({ job: null, paused: false });
 
     return res.status(200).json({

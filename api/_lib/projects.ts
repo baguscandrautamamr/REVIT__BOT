@@ -10,6 +10,7 @@
  */
 import * as db from './db';
 import { translator, type Locale } from './i18n';
+import { targetFor } from './routing';
 import { answerCallbackQuery, editMessageText, mdv2, sendMessage } from './telegram';
 
 /** Prefix callback, dipisahkan dari `pref:` dan `confirm:`. */
@@ -36,7 +37,7 @@ function dataFor(index: number): string {
 
 export async function handleProject(
   user: db.BotUser,
-  machine: db.MachineState,
+  machine: db.MachineView,
   args: string[],
   locale: Locale,
 ): Promise<void> {
@@ -99,8 +100,11 @@ export async function handleProjectCallback(
   let picked: string | null = null;
 
   if (raw !== FOLLOW_ACTIVE) {
-    const machine = await db.getMachine();
-    const open = machine.open_docs ?? [];
+    // Daftar file dibaca ulang dari PC MILIK USER INI, bukan dari baris tunggal
+    // machine_state. Dengan beberapa PC, yang kedua bisa memuat daftar file PC
+    // lain — dan indeks tombol yang ditekan lalu menunjuk project orang lain.
+    const target = await targetFor(user);
+    const open = target.kind === 'unassigned' ? [] : target.view.open_docs ?? [];
     const index = Number(raw);
 
     // Daftar file bisa berubah antara pesan dikirim dan tombol ditekan. Indeks
@@ -140,7 +144,7 @@ export async function handleProjectCallback(
  * lagi" beserta daftar yang ada. Menggantinya di sini dengan dokumen aktif
  * berarti mengerjakan project yang tidak diminta siapa pun.
  */
-export function targetProject(user: db.BotUser, machine: db.MachineState): string | null {
+export function targetProject(user: db.BotUser, machine: db.MachineView): string | null {
   return user.project ?? machine.active_doc ?? null;
 }
 

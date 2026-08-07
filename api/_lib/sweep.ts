@@ -13,6 +13,18 @@
  * Penyapu dipanggil dari dua tempat supaya tidak ada celah:
  *   - `machine/claim.ts`   — tiap 4 detik, selama PC hidup
  *   - `telegram/webhook.ts` — tiap command, termasuk saat PC justru mati
+ *
+ * ── Kenapa sekarang PER-PC ──────────────────────────────────────────────────
+ *
+ * Dengan lebih dari satu PC Revit, satu keputusan untuk seluruh antrean menjadi
+ * salah dengan cara yang mahal: /claim dari PC yang idle melaporkan `busy: false`,
+ * dan tanpa pembatasan itu berarti "tidak ada yang mengerjakan job apa pun" —
+ * lalu job PC LAIN yang sedang mengekspor 25 sheet ditutup dengan alasan "add-in
+ * tidak mengakui job ini". Benar untuk PC pemanggil, salah untuk pemilik job-nya,
+ * dan hasil belasan menit kerja Revit dibuang tepat sebelum tiba.
+ *
+ * Jadi penyapuan sekarang dijalankan sebagai beberapa PASS, satu per PC, dan tiap
+ * pass hanya menyentuh job miliknya sendiri.
  */
 import * as db from './db';
 import { translator } from './i18n';
@@ -32,7 +44,36 @@ export interface SweepReport {
  * sebuah job. `telegram/webhook.ts` tidak tahu keduanya dan mengirim objek kosong.
  */
 export interface SweepContext {
-  /** true/false dari heartbeat add-in; undefined = pemanggil tidak tahu. */
+  /**
+   * PC yang sedang memanggil, dari jalur /claim, beserta apa yang ia ketahui.
+   * Tidak ada = jalur webhook: tidak tahu PC mana, dan tidak tahu `busy`.
+   *
+   * `machineId: null` berarti pemanggilnya memakai `MACHINE_TOKEN` dari
+   * environment — ia tidak punya identitas, jadi yang boleh disapunya hanya job
+   * yang juga tidak dialamatkan.
+   *
+   * `addinBusy` SENGAJA berada di dalam sini, bukan sebagai bidang sejajar.
+   * Bentuk sebelumnya mengizinkan `{ addinBusy: false }` tanpa menyebut PC-nya —
+   * dan dengan beberapa PC, itu berarti "satu PC yang idle menyatakan tidak ada
+   * yang mengerjakan job apa pun", lalu job PC lain yang justru sedang mengekspor
+   * ditutup sebagai terlantar. Keadaan yang tidak punya arti yang benar sebaiknya
+   * tidak bisa ditulis sama sekali.
+   */
+  caller?: { machineId: string | null; addinBusy?: boolean };
+}
+
+/**
+ * Satu putaran penyapuan atas satu petak antrean.
+ *
+ * `scope` undefined berarti "seluruh antrean" dan hanya dipakai di jalur lama
+ * (belum ada PC terdaftar). Membedakannya dari `{ machineId: null }` itu penting:
+ * yang kedua berarti "hanya job tanpa tujuan", dan memakainya untuk jalur lama
+ * akan meninggalkan job yang dialamatkan tanpa satu pun penyapu.
+ */
+interface Pass {
+  scope: { machineId: string | null } | undefined;
+  /** Dasar penilaian "PC-nya masih hidup?" untuk pass ini. */
+  lastSeenAt: string | null;
   addinBusy?: boolean;
 }
 
@@ -75,15 +116,15 @@ interface RunningLimit {
   message: 'errors.stuck' | 'errors.tooLong';
 }
 
-async function runningLimit(ctx: SweepContext): Promise<RunningLimit> {
-  if (ctx.addinBusy === true) {
+function runningLimit(pass: Pass): RunningLimit {
+  if (pass.addinBusy === true) {
     return {
       ms: MAX_RUNTIME_MS,
       reason: 'add-in memegangnya terlalu lama',
       message: 'errors.tooLong',
     };
   }
-  if (ctx.addinBusy === false) {
+  if (pass.addinBusy === false) {
     return {
       ms: ORPHAN_AFTER_MS,
       reason: 'add-in tidak mengakui job ini',
@@ -94,29 +135,74 @@ async function runningLimit(ctx: SweepContext): Promise<RunningLimit> {
   // Pemanggil tidak tahu keadaan add-in (jalur webhook). Heartbeat yang masih
   // segar sudah cukup untuk TIDAK menyimpulkan job-nya mati: /claim jalan tiap 4
   // detik dan akan memutuskannya dengan data yang benar.
-  const machine = await db.getMachine();
-  return isOnline(machine.last_seen_at)
+  return isOnline(pass.lastSeenAt)
     ? { ms: MAX_RUNTIME_MS, reason: 'berjalan terlalu lama', message: 'errors.tooLong' }
     : { ms: STUCK_AFTER_MS, reason: 'tidak ada laporan dari add-in', message: 'errors.stuck' };
 }
 
+/**
+ * Susun daftar pass.
+ *
+ * Dari /claim: satu pass saja, untuk PC pemanggil. `lastSeenAt` diisi waktu
+ * sekarang — PC itu sedang menelepon, jadi ia jelas hidup, dan membacanya dari
+ * database malah bisa memakai nilai yang belum ter-update.
+ *
+ * Dari webhook: satu pass per PC terdaftar, PLUS satu pass untuk job yang belum
+ * dialamatkan. Pass terakhir itu memakai heartbeat `machine_state`, yang tetap
+ * ditulis setiap /claim dari PC mana pun — dan itu memang sinyal yang benar untuk
+ * job dari era sebelum routing ada.
+ */
+async function passesFor(ctx: SweepContext): Promise<Pass[]> {
+  if (ctx.caller) {
+    const { machineId, addinBusy } = ctx.caller;
+    return [{
+      scope: (await db.routingReady()) ? { machineId } : undefined,
+      lastSeenAt: new Date().toISOString(),
+      addinBusy,
+    }];
+  }
+
+  const state = await db.getMachine();
+
+  if (!(await db.routingReady())) {
+    return [{ scope: undefined, lastSeenAt: state.last_seen_at }];
+  }
+
+  const machines = await db.listMachines();
+  if (machines.length === 0) {
+    return [{ scope: undefined, lastSeenAt: state.last_seen_at }];
+  }
+
+  return [
+    ...machines.map((m) => ({
+      scope: { machineId: m.id },
+      lastSeenAt: m.last_seen_at,
+    })),
+    { scope: { machineId: null }, lastSeenAt: state.last_seen_at },
+  ];
+}
+
 export async function sweepAndNotify(ctx: SweepContext = {}): Promise<SweepReport> {
-  const limit = await runningLimit(ctx);
+  // Kedaluwarsa dinilai dari `expires_at`, jadi ia tidak punya urusan dengan PC
+  // mana pun dan dikerjakan SEKALI. Menjalankannya per pass akan mengulang
+  // pekerjaan yang sama sebanyak jumlah PC, dan yang kedua dan seterusnya selalu
+  // mendapat nol baris.
+  const expired = await db.expireStale();
+  await Promise.all(expired.map((job) => closeInChat(job, 'common.expired')));
 
-  const [expired, stuck] = await Promise.all([
-    db.expireStale(),
-    db.reapRunning(limit.ms, limit.reason),
-  ]);
+  let stuck = 0;
+  for (const pass of await passesFor(ctx)) {
+    const limit = runningLimit(pass);
+    const reaped = await db.reapRunning(limit.ms, limit.reason, pass.scope);
 
-  await Promise.all([
-    ...expired.map((job) => closeInChat(job, 'common.expired')),
     // Job yang dibunuh batas ATAS bukan job yang terputus — Revit-nya masih
     // hidup dan mungkin masih bekerja. Menyebutnya "Revit ditutup" akan
     // mengirim orang memeriksa PC yang sebenarnya tidak apa-apa.
-    ...stuck.map((job) => closeInChat(job, limit.message)),
-  ]);
+    await Promise.all(reaped.map((job) => closeInChat(job, limit.message)));
+    stuck += reaped.length;
+  }
 
-  return { expired: expired.length, stuck: stuck.length };
+  return { expired: expired.length, stuck };
 }
 
 /** Versi yang tidak pernah melempar — untuk dipanggil di jalur command user. */

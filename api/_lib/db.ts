@@ -27,6 +27,12 @@ export interface BotUser {
    * Ada hanya setelah migrasi 004 — lihat `projectSelectionReady`.
    */
   project?: string | null;
+  /**
+   * PC Revit yang melayani user ini. Ada hanya setelah migrasi 006 —
+   * lihat `routingReady`. Arti NULL-nya tergantung berapa PC yang terdaftar;
+   * yang memutuskan `_lib/routing.ts`.
+   */
+  machine_id?: string | null;
 }
 
 export interface CommandRow {
@@ -44,6 +50,8 @@ export interface CommandRow {
   finished_at: string | null;
   expires_at: string;
   created_at: string;
+  /** PC tujuan job. Ada hanya setelah migrasi 006 — lihat `routingReady`. */
+  machine_id?: string | null;
 }
 
 export interface MachineState {
@@ -221,6 +229,89 @@ export async function machinesReady(): Promise<boolean> {
   return machinesTable;
 }
 
+/**
+ * Migrasi 006 (routing per-PC) sudah dijalankan atau belum.
+ *
+ * Sama pentingnya seperti `machinesReady`, dan di jalur yang sama berbahayanya:
+ * `machine_id` disebut dalam query klaim yang jalan tiap 4 detik. Kolom yang
+ * belum ada membuat PostgREST menolak SELURUH request — bukan cuma bagian yang
+ * menyentuhnya — jadi tanpa pemeriksaan ini satu langkah SQL yang terlewat
+ * mematikan pengambilan job seluruhnya.
+ */
+let routingColumns: boolean | null = null;
+
+export async function routingReady(): Promise<boolean> {
+  if (routingColumns !== null) return routingColumns;
+  try {
+    await rest('bot_users?limit=1&select=machine_id');
+    await rest('commands?limit=1&select=machine_id');
+    routingColumns = true;
+  } catch {
+    console.warn('[db] migrasi 006 belum dijalankan — routing per-PC dimatikan');
+    routingColumns = false;
+  }
+  return routingColumns;
+}
+
+/**
+ * Keadaan SATU PC, dari mana pun sumbernya.
+ *
+ * Ada karena keadaan itu sekarang bisa datang dari dua tempat: baris `machines`
+ * (setelah 005), atau baris tunggal `machine_state` (sebelum itu). Yang membaca —
+ * /status, /project, panel, penyapu — tidak perlu tahu yang mana, dan begitu
+ * setiap pemanggil harus memilih sendiri, salah satunya akan memilih yang salah.
+ *
+ * `bot_enabled` SENGAJA tidak ada di sini: ia kill switch GLOBAL, bukan sifat satu
+ * PC. Menaruhnya di tipe ini akan mengundang seseorang mematikan bot untuk satu
+ * PC dan mengira ia mematikannya untuk semua.
+ */
+export interface MachineView {
+  /** null = dari `machine_state`, belum punya baris `machines` sendiri. */
+  id: string | null;
+  name: string;
+  last_seen_at: string | null;
+  active_doc: string | null;
+  open_docs: string[] | null;
+  revit_version: string | null;
+  addin_version: string | null;
+  is_paused: boolean;
+}
+
+export function viewOfMachine(m: Machine): MachineView {
+  return {
+    id: m.id,
+    name: m.name,
+    last_seen_at: m.last_seen_at,
+    active_doc: m.active_doc,
+    open_docs: m.open_docs ?? [],
+    revit_version: m.revit_version,
+    addin_version: m.addin_version,
+    is_paused: m.is_paused,
+  };
+}
+
+export function viewOfState(s: MachineState): MachineView {
+  return {
+    id: null,
+    name: 'PC Revit',
+    last_seen_at: s.last_seen_at,
+    active_doc: s.active_doc,
+    open_docs: s.open_docs ?? [],
+    revit_version: s.revit_version,
+    addin_version: s.addin_version,
+    is_paused: s.is_paused,
+  };
+}
+
+/** Pause/resume satu PC. `id` null → baris tunggal `machine_state` (perilaku lama). */
+export async function setPaused(id: string | null, paused: boolean): Promise<void> {
+  if (id === null) return updateMachine({ is_paused: paused });
+  await rest(`machines?id=eq.${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_paused: paused }),
+  });
+}
+
 export async function listMachines(): Promise<Machine[]> {
   if (!(await machinesReady())) return [];
   return rest<Machine[]>(`machines?select=${MACHINE_FIELDS}&order=created_at.asc`);
@@ -285,11 +376,21 @@ export async function insertCommand(row: {
   payload: Record<string, unknown>;
   lang: 'id' | 'en';
   tg_message_id?: number | null;
+  /** PC tujuan. Diabaikan kalau migrasi 006 belum dijalankan. */
+  machine_id?: string | null;
 }): Promise<CommandRow> {
+  const { machine_id, ...base } = row;
+
+  // Kolomnya HARUS tidak disebut sama sekali kalau belum ada: menyertakan nama
+  // kolom yang tidak dikenal membuat PostgREST menolak seluruh insert, dan yang
+  // gagal bukan routing-nya melainkan command user — dengan pesan yang tidak
+  // menyebut sebab yang sebenarnya.
+  const body = (await routingReady()) ? { ...base, machine_id: machine_id ?? null } : base;
+
   const rows = await rest<CommandRow[]>('commands', {
     method: 'POST',
     headers: RETURNING,
-    body: JSON.stringify([row]),
+    body: JSON.stringify([body]),
   });
   return rows[0];
 }
@@ -302,16 +403,42 @@ export async function setCommandMessageId(id: string, messageId: number): Promis
 }
 
 /**
- * Ambil satu job FIFO dan langsung tandai `running`.
+ * Petak antrean yang boleh disentuh satu PC.
+ *
+ * `null` berarti PC itu belum punya baris `machines` sendiri — ia memakai
+ * `MACHINE_TOKEN` dari environment, jadi tidak ada job yang bisa dialamatkan
+ * kepadanya dan ia hanya boleh mengambil job yang juga tidak dialamatkan.
+ *
+ * Itu bukan pembatasan yang kejam, itu satu-satunya jawaban yang benar: kalau PC
+ * tanpa identitas dibiarkan mengambil job milik PC lain, seluruh gunanya routing
+ * hilang justru pada kasus yang paling mungkin terjadi selama perpindahan.
+ */
+function scopeFilter(machineId: string | null): string {
+  // Job tanpa tujuan ikut boleh diambil PC yang punya identitas: ia berasal dari
+  // era sebelum routing ada, dan tidak ada PC lain yang lebih berhak.
+  return machineId
+    ? `&or=(machine_id.eq.${machineId},machine_id.is.null)`
+    : '&machine_id=is.null';
+}
+
+/**
+ * Ambil satu job FIFO yang dialamatkan ke PC ini, lalu tandai `running`.
  *
  * Filter `status=eq.pending` ikut disertakan pada PATCH, jadi kalau dua proses
- * memperebutkan baris yang sama, hanya satu yang mendapat baris kembali —
- * yang kalah mendapat array kosong. Cukup untuk satu PC Revit. Kalau nanti ada
- * PC kedua, ganti dengan fungsi Postgres `for update skip locked`.
+ * memperebutkan baris yang sama, hanya satu yang mendapat baris kembali — yang
+ * kalah mendapat array kosong.
+ *
+ * `for update skip locked` yang disebut komentar lama TIDAK diperlukan untuk
+ * topologi ini: satu user dipasangkan ke tepat satu PC, dan setiap PC hanya
+ * melihat job yang dialamatkan kepadanya, jadi dua PC tidak akan pernah
+ * memperebutkan baris yang sama. Yang tersisa hanyalah satu PC dengan dua sesi
+ * Revit — dan untuk itu trik di atas memang cukup.
  */
-export async function claimNextCommand(): Promise<CommandRow | null> {
+export async function claimNextCommand(machineId: string | null): Promise<CommandRow | null> {
+  const scope = (await routingReady()) ? scopeFilter(machineId) : '';
+
   const pending = await rest<CommandRow[]>(
-    'commands?status=eq.pending&order=created_at.asc&limit=1',
+    `commands?status=eq.pending${scope}&order=created_at.asc&limit=1`,
   );
   const job = pending[0];
   if (!job) return null;
@@ -407,10 +534,22 @@ export async function expireStale(): Promise<CommandRow[]> {
  * kedua, satu crash Revit meninggalkan baris `running` selamanya — pesan "⏳"
  * milik user tidak pernah selesai, dan /status melaporkan "1 jalan" terus.
  */
-export async function reapRunning(olderThanMs: number, reason: string): Promise<CommandRow[]> {
+export async function reapRunning(
+  olderThanMs: number,
+  reason: string,
+  /**
+   * Batasi ke job milik SATU PC. Tanpa ini, satu /claim dari PC yang idle akan
+   * menutup job PC lain yang justru sedang mengekspor 25 sheet — dengan alasan
+   * "add-in tidak mengakui job ini", yang benar untuk PC pemanggil dan salah
+   * untuk pemilik job-nya. `undefined` = semua job (jalur lama, satu PC).
+   */
+  scope?: { machineId: string | null },
+): Promise<CommandRow[]> {
   const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+  const filter = scope && (await routingReady()) ? scopeFilter(scope.machineId) : '';
+
   return rest<CommandRow[]>(
-    `commands?status=eq.running&started_at=lt.${cutoff}`,
+    `commands?status=eq.running&started_at=lt.${cutoff}${filter}`,
     {
       method: 'PATCH',
       headers: RETURNING,
@@ -458,18 +597,27 @@ export async function finishLateReport(
   return rows[0] ?? null;
 }
 
-export async function queueSnapshot(): Promise<{
+/**
+ * Isi antrean. `scope` membatasinya ke satu PC.
+ *
+ * Dibatasi karena /status dan /queue sekarang menjawab pertanyaan "apa yang akan
+ * dikerjakan PC SAYA" — angka gabungan dari tiga PC akan membuat orang mengira
+ * job-nya mengantre di belakang pekerjaan yang sebenarnya berjalan di mesin lain,
+ * lalu menunggu tanpa alasan.
+ */
+export async function queueSnapshot(scope?: { machineId: string | null }): Promise<{
   pending: CommandRow[];
   running: CommandRow[];
   doneToday: number;
 }> {
   const midnight = startOfLocalDay();
+  const filter = scope && (await routingReady()) ? scopeFilter(scope.machineId) : '';
 
   const [pending, running, done] = await Promise.all([
-    rest<CommandRow[]>('commands?status=eq.pending&order=created_at.asc&limit=20'),
-    rest<CommandRow[]>('commands?status=eq.running&order=created_at.asc&limit=20'),
+    rest<CommandRow[]>(`commands?status=eq.pending${filter}&order=created_at.asc&limit=20`),
+    rest<CommandRow[]>(`commands?status=eq.running${filter}&order=created_at.asc&limit=20`),
     rest<{ id: string }[]>(
-      `commands?status=eq.done&finished_at=gte.${midnight.toISOString()}&select=id`,
+      `commands?status=eq.done${filter}&finished_at=gte.${midnight.toISOString()}&select=id`,
     ),
   ]);
   return { pending, running, doneToday: done.length };

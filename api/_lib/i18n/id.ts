@@ -45,6 +45,13 @@ export const id = {
       `Tunggu ${p.seconds} detik lagi — command berat baru saja dijalankan.`,
     pcOffline: (p: Params) =>
       `🔴 PC offline sejak ${p.since} (${p.ago}).\nCommand tetap diantre — jalan otomatis begitu Revit dibuka.`,
+    // Sengaja tidak menebak salah satu PC. Menebak berarti mengerjakan model
+    // orang lain lalu mengirimkannya sebagai hasil yang sah, tanpa satu pun
+    // tanda di balasannya bahwa itu dari project yang salah.
+    noMachine:
+      'PC Revit kamu belum dipasangkan admin, dan sekarang ada lebih dari satu — ' +
+      'jadi bot tidak boleh menebak yang mana. Minta admin memasangkanmu lewat panel. ' +
+      'PC yang terdaftar:',
     noDocument: 'Revit terbuka tapi belum ada model yang dibuka.',
     docMismatch: (p: Params) =>
       `Model tidak cocok. Yang terbuka sekarang: ${p.actual}`,
@@ -91,6 +98,7 @@ export const id = {
 
   status: {
     title: '📊 Status',
+    pc: (p: Params) => `PC: ${p.name}`,
     online: (p: Params) => `🟢 PC online (terakhir terlihat ${p.ago} lalu)`,
     offline: (p: Params) => `🔴 PC offline sejak ${p.since}`,
     model: (p: Params) => `Model: ${p.title}`,

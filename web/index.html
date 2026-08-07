@@ -50,6 +50,10 @@
         <div class="card__head">
           <span class="dot dot--warn" id="status-dot"></span>
           <h2 id="status-title">…</h2>
+          <!-- Nama PC yang statusnya sedang ditampilkan. Kosong selama masih
+               satu PC — dengan beberapa PC, tanpa ini tiga orang membaca tiga
+               status berbeda yang terlihat identik. -->
+          <span class="muted small mono" id="status-pc"></span>
         </div>
         <!-- Diisi app.js hanya saat ada yang salah: sebab kegagalan, bukan
              cuma "gagal". Tanpa ini panel yang dibuka di luar Telegram terlihat
@@ -100,6 +104,9 @@
             <option value="viewer" data-i18n="role.viewer"></option>
             <option value="admin" data-i18n="role.admin"></option>
           </select>
+          <!-- Diisi app.js dari daftar PC. Pilihan pertamanya sengaja "ikut
+               aturan": selama masih satu PC, tidak ada yang perlu dipilih. -->
+          <select class="input" id="user-machine" data-i18n-label="users.machine"></select>
           <button class="btn btn--primary" type="submit" data-i18n="users.add"></button>
         </form>
 

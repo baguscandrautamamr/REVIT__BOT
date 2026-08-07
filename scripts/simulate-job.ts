@@ -44,7 +44,7 @@ import type { AddressInfo } from 'node:net';
 interface Row { [k: string]: unknown }
 
 const tables: Record<string, Row[]> = {
-  commands: [], machine_state: [], bot_users: [], tg_updates: [],
+  commands: [], machine_state: [], bot_users: [], tg_updates: [], machines: [],
 };
 const objects = new Map<string, Buffer>();
 let bucketExists = true;
@@ -97,20 +97,47 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
+/**
+ * Satu perbandingan PostgREST.
+ *
+ * Operator yang belum ditiru mengembalikan true — TIDAK menyaring apa pun. Itu
+ * pilihan yang harus disadari: filter yang salah ketik jadi lolos di sini dan
+ * baru gagal di produksi. `is` sengaja ditiru justru karena itu — selama ia jatuh
+ * ke default, `machine_id=is.null` mencocokkan SEMUA baris dan seluruh pengujian
+ * routing per-PC di bawah akan hijau tanpa membuktikan apa pun.
+ */
+function compare(actual: unknown, op: string, value: string): boolean {
+  switch (op) {
+    case 'eq': return String(actual) === value;
+    case 'lt': return String(actual) < value;
+    case 'gte': return String(actual) >= value;
+    case 'is': return value === 'null' ? actual === null || actual === undefined : String(actual) === value;
+    case 'in': {
+      const list = value.replace(/^\(|\)$/g, '').split(',').map((s) => s.replace(/^"|"$/g, ''));
+      return list.includes(String(actual));
+    }
+    default: return true;
+  }
+}
+
 /** `?id=eq.x&status=eq.running` → predikat. Cukup untuk yang dipakai db.ts. */
 function matches(row: Row, params: URLSearchParams): boolean {
   for (const [key, raw] of params) {
     if (['select', 'order', 'limit', 'offset'].includes(key)) continue;
-    const [op, ...rest] = raw.split('.');
-    const value = rest.join('.');
-    const actual = row[key];
-    if (op === 'eq' && String(actual) !== value) return false;
-    if (op === 'lt' && !(String(actual) < value)) return false;
-    if (op === 'gte' && !(String(actual) >= value)) return false;
-    if (op === 'in') {
-      const list = value.replace(/^\(|\)$/g, '').split(',').map((s) => s.replace(/^"|"$/g, ''));
-      if (!list.includes(String(actual))) return false;
+
+    // `or=(machine_id.eq.<id>,machine_id.is.null)` — filter klaim per-PC.
+    if (key === 'or') {
+      const parts = raw.replace(/^\(|\)$/g, '').split(',');
+      const any = parts.some((part) => {
+        const [col, op, ...rest] = part.split('.');
+        return compare(row[col ?? ''], op ?? '', rest.join('.'));
+      });
+      if (!any) return false;
+      continue;
     }
+
+    const [op, ...rest] = raw.split('.');
+    if (!compare(row[key], op ?? '', rest.join('.'))) return false;
   }
   return true;
 }
@@ -627,8 +654,12 @@ async function main() {
     const text = statusText(
       'id',
       {
-        id: 1, last_seen_at: seen, active_doc: null, revit_version: null,
-        addin_version: null, is_paused: false, bot_enabled: true,
+        // `id: null` = keadaan dari machine_state, bukan baris `machines`.
+        // Sengaja begitu di sini: yang diuji jam kantornya, dan nama PC hanya
+        // dicetak untuk PC yang punya barisnya sendiri — menyalakannya akan
+        // menggeser indeks baris yang diperiksa di bawah.
+        id: null, name: 'PC Revit', last_seen_at: seen, active_doc: null,
+        open_docs: [], revit_version: null, addin_version: null, is_paused: false,
       },
       { pending: [], running: [] },
     );
@@ -808,14 +839,14 @@ async function main() {
 
     // Add-in hidup DAN memegang job → tidak boleh disentuh, walau 45 menit.
     const long = ageing(45);
-    await sweepAndNotify({ addinBusy: true });
+    await sweepAndNotify({ caller: { machineId: null, addinBusy: true } });
     check('job 45 menit dibiarkan selama add-in memegangnya', jobStatus(long) === 'running',
       String(jobStatus(long)));
 
     // Batas atas tetap ada: add-in bisa menggantung selamanya karena satu dialog
     // Revit, dan "⏳" tidak boleh abadi.
     const forever = ageing(3 * 60);
-    await sweepAndNotify({ addinBusy: true });
+    await sweepAndNotify({ caller: { machineId: null, addinBusy: true } });
     check('batas atas 2 jam tetap berlaku', jobStatus(forever) === 'failed', String(jobStatus(forever)));
     check('…dan pesannya tidak menuduh Revit ditutup',
       sent.some((s) => s.text?.includes('kelewat lama')),
@@ -825,7 +856,7 @@ async function main() {
     // dalam 2 menit, bukan 15.
     const orphan = ageing(5);
     sent.length = 0;
-    await sweepAndNotify({ addinBusy: false });
+    await sweepAndNotify({ caller: { machineId: null, addinBusy: false } });
     check('job terlantar ditutup dalam menit, bukan belasan menit',
       jobStatus(orphan) === 'failed', String(jobStatus(orphan)));
     check('…dan INI yang pantas disebut terputus',
@@ -965,6 +996,134 @@ async function main() {
       (tables.bot_users.find((u) => u.chat_id === CHAT_A) as Row).project === null &&
       sent.some((s) => s.text?.includes('cocok ke 3')),
       sent.map((s) => s.text).join(' | ').slice(0, 60));
+  }
+
+  console.log('\n15. Job hanya boleh dikerjakan PC pemiliknya');
+  {
+    // Kegagalan yang dicegah bagian ini adalah yang paling sulit dilihat di
+    // seluruh repo: PC user 2 mengambil job user 1, mengerjakannya di model
+    // SENDIRI, lalu mengirim hasilnya sebagai jawaban yang sah. Penjagaan
+    // `expectedDocTitle` di add-in pun lolos kalau judul modelnya kebetulan sama —
+    // dan tidak ada apa pun di chat yang menandai bahwa gambar kerja itu berasal
+    // dari project orang lain.
+    const webhook = (await import('../api/telegram/webhook')).default;
+    const claim = (await import('../api/machine/claim')).default;
+    const hash = (t: string) => createHash('sha256').update(t, 'utf8').digest('hex');
+
+    // Antrean dibersihkan: sisa job dari bagian sebelumnya semuanya tanpa tujuan
+    // (`machine_id` null), dan PC yang punya identitas memang BOLEH mengambilnya —
+    // jadi tanpa dibersihkan, klaim di bawah bisa mengembalikan job yang salah dan
+    // pemeriksaannya lolos karena alasan yang keliru.
+    tables.commands.length = 0;
+    tables.machines.length = 0;
+
+    const PC1 = { id: randomUUID(), name: 'PC Budi', token: 'tok-satu' };
+    const PC2 = { id: randomUUID(), name: 'PC Andi', token: 'tok-dua' };
+    for (const pc of [PC1, PC2]) {
+      tables.machines.push({
+        id: pc.id, name: pc.name, token_hash: hash(pc.token), is_active: true,
+        last_seen_at: new Date().toISOString(), active_doc: 'PRJ.rvt',
+        open_docs: ['PRJ.rvt'], revit_version: '2025', addin_version: '0.1.0',
+        is_paused: false, created_at: new Date().toISOString(),
+      });
+    }
+
+    const U1 = CHAT + 600;
+    const U2 = CHAT + 601;
+    const U3 = CHAT + 602;
+    const owners: Array<[number, string | null, string]> = [
+      [U1, PC1.id, 'admin'], [U2, PC2.id, 'viewer'], [U3, null, 'viewer'],
+    ];
+    for (const [id, machineId, role] of owners) {
+      tables.bot_users.push({
+        chat_id: id, name: `User ${id}`, role, is_active: true, lang: 'id',
+        theme: 'auto', project: null, machine_id: machineId,
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    async function send(chatId: number, text: string, updateId: number) {
+      sent.length = 0;
+      const before = tables.commands.length;
+      await invoke(webhook, {
+        headers: { 'x-telegram-bot-api-secret-token': 'simulasi' },
+        body: { update_id: updateId, message: { chat: { id: chatId }, from: { id: chatId }, text } },
+      });
+      return tables.commands[before] as Row | undefined;
+    }
+
+    const claimAs = (token: string, busy = false) =>
+      invoke(claim, {
+        body: { activeDoc: 'PRJ.rvt', revitVersion: '2025', addinVersion: '0.1.0', busy },
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+    // ── Job dialamatkan ke PC pemiliknya ──────────────────────────────────
+    const job1 = await send(U1, '/levels', 60);
+    check('job user 1 dialamatkan ke PC-nya', job1?.machine_id === PC1.id, String(job1?.machine_id));
+
+    const wrongPc = await claimAs(PC2.token);
+    check('PC LAIN tidak mendapat job itu',
+      (wrongPc.body as { job: unknown }).job === null,
+      JSON.stringify((wrongPc.body as { job?: { id?: string } }).job ?? null).slice(0, 60));
+
+    const rightPc = await claimAs(PC1.token);
+    check('PC pemiliknya mendapatkannya',
+      (rightPc.body as { job?: { id?: string } }).job?.id === job1?.id,
+      String((rightPc.body as { job?: { id?: string } }).job?.id));
+
+    // ── User tanpa penugasan, dengan dua PC terdaftar ─────────────────────
+    const before = tables.commands.length;
+    await send(U3, '/levels', 61);
+    check('user tanpa penugasan DITOLAK, bukan ditebak',
+      tables.commands.length === before,
+      `${tables.commands.length - before} job dibuat`);
+    check('…dan kalimatnya menyebut PC yang ada',
+      sent.some((s) => s.text?.includes('PC Budi') && s.text?.includes('PC Andi')),
+      sent.map((s) => s.text).join(' | ').slice(0, 80));
+
+    // ── Penyapu satu PC tidak menyentuh job PC lain ───────────────────────
+    // Ini kegagalan yang paling mahal kalau routing setengah jadi: /claim dari PC
+    // yang idle melaporkan busy=false, dan tanpa pembatasan itu berarti "tidak ada
+    // yang mengerjakan job apa pun" — lalu export 25 sheet di PC lain ditutup
+    // sebagai terlantar, tepat sebelum hasilnya tiba.
+    const busyOnPc2 = randomUUID();
+    tables.commands.push({
+      id: busyOnPc2, chat_id: U2, command: 'pdf', payload: {}, lang: 'id',
+      status: 'running', machine_id: PC2.id, tg_message_id: 800,
+      started_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+      created_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+      finished_at: null, result: null, error: null, doc_title: null,
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+    });
+
+    await claimAs(PC1.token, false);
+    check('job PC lain TIDAK disapu oleh /claim PC yang idle',
+      jobStatus(busyOnPc2) === 'running', String(jobStatus(busyOnPc2)));
+
+    // …tapi PC pemiliknya sendiri, saat idle, memang harus menutupnya.
+    await claimAs(PC2.token, false);
+    check('PC pemiliknya yang idle menutup job terlantarnya sendiri',
+      jobStatus(busyOnPc2) === 'failed', String(jobStatus(busyOnPc2)));
+
+    // ── /pause hanya menghentikan PC yang memerintahkannya ────────────────
+    await send(U1, '/pause', 62);
+    check('/pause menyentuh PC pengirimnya saja',
+      (tables.machines.find((m) => m.id === PC1.id) as Row).is_paused === true &&
+      (tables.machines.find((m) => m.id === PC2.id) as Row).is_paused === false,
+      `PC1=${(tables.machines.find((m) => m.id === PC1.id) as Row).is_paused} ` +
+      `PC2=${(tables.machines.find((m) => m.id === PC2.id) as Row).is_paused}`);
+
+    const job2 = await send(U2, '/levels', 63);
+    const pausedPc = await claimAs(PC1.token);
+    check('PC yang di-pause tidak mengambil job',
+      (pausedPc.body as { paused?: boolean }).paused === true,
+      JSON.stringify(pausedPc.body).slice(0, 60));
+
+    const otherPc = await claimAs(PC2.token);
+    check('…dan PC lain tetap bekerja seperti biasa',
+      (otherPc.body as { job?: { id?: string } }).job?.id === job2?.id,
+      String((otherPc.body as { job?: { id?: string } }).job?.id));
   }
 
   server.close();
