@@ -29,6 +29,7 @@ import {
   statusText,
   usersText,
 } from '../_lib/reply';
+import { PROJECT_PREFIX, handleProject, handleProjectCallback, targetProject } from '../_lib/projects';
 import { closeInChat, sweepQuietly } from '../_lib/sweep';
 import {
   answerCallbackQuery,
@@ -186,6 +187,10 @@ async function serverSide(
       return;
     }
 
+    case 'project':
+      await handleProject(user, machine, args, locale);
+      return;
+
     case 'users':
       await sendMessage(chatId, usersText(locale, await db.listUsers()));
       return;
@@ -287,9 +292,12 @@ async function enqueue(
   // siklus, justru supaya judul ini tidak basi). Kalau belum diketahui —
   // Revit baru dibuka dan heartbeat pertama belum masuk — kuncinya tidak
   // ditulis sama sekali, dan add-in melewati penjagaan ini.
-  const payload = machine.active_doc
-    ? { ...built.payload, docTitle: machine.active_doc }
-    : built.payload;
+  // Project yang dituju: pilihan user kalau ada, kalau tidak dokumen aktif.
+  // Sebelum ada `/project`, yang menentukan selalu dokumen aktif — jadi orang
+  // yang duduk di depan PC menentukan project siapa pun yang mengirim perintah
+  // dari HP, dan si pengirim tidak punya cara melihat maupun mengubahnya.
+  const target = targetProject(user, machine);
+  const payload = target ? { ...built.payload, docTitle: target } : built.payload;
 
   const job = await db.insertCommand({
     chat_id: chatId,
@@ -454,6 +462,12 @@ async function onCallback(query: any): Promise<void> {
   const user = await db.getUser(chatId);
   if (!user || !user.is_active) {
     await answerCallbackQuery(query.id);
+    return;
+  }
+
+  if (data.startsWith(PROJECT_PREFIX)) {
+    const locale = resolveLocale(user.lang, query.from.language_code ?? null);
+    await handleProjectCallback({ id: query.id, data, message: query.message }, user, locale);
     return;
   }
 

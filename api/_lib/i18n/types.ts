@@ -37,6 +37,7 @@ export interface Catalog {
   exportFile: Record<string, Node>;
   confirm: Record<string, Node>;
   admin: Record<string, Node>;
+  project: Record<string, Node>;
   lang: Record<string, Node>;
   commandDesc: Record<string, string>;
 }

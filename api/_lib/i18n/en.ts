@@ -147,6 +147,22 @@ export const en = {
     current: (p: Params) => `Current language: ${p.lang}`,
   },
 
+  project: {
+    prompt: 'Pick the project every following command should target:',
+    selected: (p) => `✅ Your active project: ${p.name}\nEvery following command targets this one.`,
+    followActive: '✅ Following whichever project is active in Revit.',
+    followActiveButton: 'Follow the active one in Revit',
+    noneOpen:
+      'Revit reports no open project. If Revit really is open, the add-in is probably an older ' +
+      'build — the file list is only sent by versions that support /project.',
+    notFound: (p) => `Project "${p.term}" is not in the open list.`,
+    ambiguous: (p) => `"${p.term}" matches ${p.n} projects at once — be more specific.`,
+    stale: 'The project list changed. Send /project again.',
+    needsMigration:
+      'Project selection is not active yet: 004_project_selection.sql has not been run in Supabase. ' +
+      'For now every command targets whichever project is active in Revit.',
+  },
+
   commandDesc: {
     status: 'PC status, open model, queue',
     levels: 'List levels in the model',
@@ -155,6 +171,7 @@ export const en = {
     views: '3D views + ready-to-copy /png commands',
     warnings: 'Active model warnings',
     queue: 'Current command queue',
+    project: 'Pick which open project commands target',
     help: 'Commands available to your role',
     count: 'Count MEP elements per floor',
     tray: 'Cable tray length per floor',

@@ -44,6 +44,22 @@ public sealed class CommandHandler : IExternalEventHandler
     /// <summary>Dibaca worker: judul dokumen terakhir yang terlihat.</summary>
     public string? LastKnownDocTitle { get; private set; }
 
+    /// <summary>
+    /// Judul SEMUA project yang sedang terbuka di sesi Revit ini.
+    ///
+    /// Satu Revit bisa membuka beberapa file sekaligus, dan sebelum ini bot
+    /// hanya pernah tahu satu — yang kebetulan aktif. Akibatnya bukan cuma
+    /// "tidak bisa memilih": job yang dibekukan ke project A akan DITOLAK kalau
+    /// orang di depan PC kebetulan pindah tab ke project C sebelum Revit
+    /// mengambilnya. Penjagaan yang benar, dengan alasan yang sama sekali tidak
+    /// bisa ditebak dari sisi Telegram.
+    ///
+    /// Family dan link tidak ikut: keduanya ada di `Documents` tapi tak satu pun
+    /// command di sini bisa dikerjakan terhadapnya, dan daftar pilihan yang
+    /// separuhnya tidak bisa dipilih lebih buruk daripada daftar yang pendek.
+    /// </summary>
+    public IReadOnlyList<string> OpenDocTitles { get; private set; } = Array.Empty<string>();
+
     public string? RevitVersion { get; private set; }
 
     /// <summary>
@@ -73,8 +89,9 @@ public sealed class CommandHandler : IExternalEventHandler
         {
             RevitVersion = app.Application.VersionNumber;
 
-            var doc = app.ActiveUIDocument?.Document;
-            LastKnownDocTitle = doc?.Title;
+            var active = app.ActiveUIDocument?.Document;
+            LastKnownDocTitle = active?.Title;
+            OpenDocTitles = ProjectDocs(app).Select(d => d.Title).ToList();
 
             // Antrean kosong adalah kejadian yang normal dan sering: worker
             // memanggil Raise() tiap siklus HANYA untuk menyegarkan dua nilai
@@ -86,7 +103,7 @@ public sealed class CommandHandler : IExternalEventHandler
 
             while (_pending.TryDequeue(out var job))
             {
-                RunOne(job, doc, dialogs);
+                RunOne(job, app, active, dialogs);
             }
         }
         catch (Exception ex)
@@ -99,8 +116,10 @@ public sealed class CommandHandler : IExternalEventHandler
         }
     }
 
-    private void RunOne(JobDto job, Document? doc, DialogSuppressor dialogs)
+    private void RunOne(JobDto job, UIApplication app, Document? active, DialogSuppressor dialogs)
     {
+        var (doc, problem) = Target(app, active, job.ExpectedDocTitle);
+
         var report = new ReportRequest { Id = job.Id, DocTitle = doc?.Title };
         byte[]? fileBytes = null;
         string? fileName = null;
@@ -112,14 +131,7 @@ public sealed class CommandHandler : IExternalEventHandler
             if (doc is null)
             {
                 report.Ok = false;
-                report.Error = "Revit terbuka tapi belum ada model yang dibuka.";
-            }
-            else if (!DocMatches(doc, job.ExpectedDocTitle))
-            {
-                // Tanpa penjagaan ini, kamu bisa menerima PDF sheet LP-01 dari
-                // project yang salah — dan tidak ada yang menandainya.
-                report.Ok = false;
-                report.Error = $"Model tidak cocok: {doc.Title}";
+                report.Error = problem;
             }
             else if (!_commands.TryGetValue(job.Command, out var command))
             {
@@ -166,7 +178,59 @@ public sealed class CommandHandler : IExternalEventHandler
         });
     }
 
-    private static bool DocMatches(Document doc, string? expected) =>
-        string.IsNullOrWhiteSpace(expected) ||
-        string.Equals(doc.Title, expected, StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Project yang sedang terbuka — tanpa family dan tanpa link.
+    ///
+    /// `Application.Documents` memuat keduanya, dan tak satu pun command di sini
+    /// bisa dikerjakan terhadapnya. Menawarkannya di daftar pilihan hanya
+    /// membuat orang memilih sesuatu yang pasti gagal.
+    /// </summary>
+    private static IEnumerable<Document> ProjectDocs(UIApplication app)
+    {
+        foreach (Document d in app.Application.Documents)
+        {
+            if (d is null || d.IsFamilyDocument || d.IsLinked) continue;
+            yield return d;
+        }
+    }
+
+    /// <summary>
+    /// Dokumen mana yang dikerjakan job ini, atau kenapa tidak ada.
+    ///
+    /// Inilah yang membuat satu Revit bisa melayani beberapa project sekaligus.
+    /// Sebelumnya job SELALU dikerjakan terhadap dokumen yang aktif, dan yang
+    /// tidak cocok ditolak — jadi orang yang duduk di depan PC menentukan
+    /// project siapa pun yang mengirim perintah dari HP, tanpa tahu ia sedang
+    /// menentukannya. Sekarang dokumennya dicari berdasarkan judul di antara
+    /// SEMUA yang terbuka; yang di layar tidak lagi berpengaruh, dan tidak ada
+    /// dokumen yang diaktifkan diam-diam.
+    ///
+    /// Project yang diminta tapi sudah ditutup TIDAK jatuh ke dokumen lain.
+    /// Mengerjakannya di project terdekat berarti mengirim gambar kerja dari
+    /// model yang salah — persis kegagalan yang paling mahal di sistem ini,
+    /// karena hasilnya terlihat benar.
+    /// </summary>
+    private static (Document? Doc, string? Problem) Target(
+        UIApplication app, Document? active, string? expected)
+    {
+        var open = ProjectDocs(app).ToList();
+
+        if (string.IsNullOrWhiteSpace(expected))
+        {
+            return active is not null
+                ? (active, null)
+                : (null, "Revit terbuka tapi belum ada model yang dibuka.");
+        }
+
+        var match = open.FirstOrDefault(d => string.Equals(d.Title, expected, StringComparison.OrdinalIgnoreCase));
+        if (match is not null) return (match, null);
+
+        var list = open.Count == 0
+            ? "(tidak ada project terbuka)"
+            : string.Join("\n", open.Select(d => "· " + d.Title));
+
+        return (null,
+            $"Project \"{expected}\" tidak terbuka lagi di Revit.\n\nYang terbuka sekarang:\n{list}\n\n" +
+            "Pilih ulang dengan /project.");
+    }
 }

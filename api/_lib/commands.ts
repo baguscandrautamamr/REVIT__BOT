@@ -33,7 +33,7 @@ export interface CommandSpec {
 /** Command yang dijawab server sendiri, tanpa menyentuh Revit. */
 export const SERVER_SIDE = new Set([
   'help', 'status', 'queue', 'lang', 'theme', 'panelapp',
-  'users', 'pause', 'resume', 'cancel',
+  'users', 'pause', 'resume', 'cancel', 'project',
 ]);
 
 /** Butuh Revit, tapi add-in belum punya implementasinya. */
@@ -96,6 +96,14 @@ export const COMMANDS: CommandSpec[] = [
     usage: { id: '/views · /views --all · /views LIGHTING', en: '/views · /views --all · /views LIGHTING' },
   },
   { name: 'warnings', role: 'viewer', section: 'info', inMenu: true, addin: true, aliases: { id: ['peringatan'] } },
+  // Dijawab server, bukan Revit: daftar file terbukanya sudah ada di
+  // machine_state lewat heartbeat, dan pilihan yang butuh satu siklus polling
+  // untuk muncul akan berhenti dipakai orang.
+  {
+    name: 'project', role: 'viewer', section: 'info', inMenu: true,
+    aliases: { id: ['proyek', 'file'] },
+    usage: { id: '/project · /project WAREHOUSE', en: '/project · /project WAREHOUSE' },
+  },
   { name: 'queue', role: 'viewer', section: 'info', inMenu: true, aliases: { id: ['antrean', 'antrian'] } },
   // `/start` dikirim otomatis oleh tombol START Telegram saat chat pertama
   // kali dibuka. Tanpa alias ini, interaksi pertama siapa pun dijawab

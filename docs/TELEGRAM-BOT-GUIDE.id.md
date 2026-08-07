@@ -291,6 +291,7 @@ Kolom **Alias**: bisa diketik sebagai ganti nama kanonik.
 | `/series` | `/seri`, `/grup` | viewer | `[discipline]` | Grup sheet (`ACT SHEET SERIES`) + jumlah + baris `/pdf --series` siap salin. `--detail` menambahkan nomor & nama tiap sheet |
 | `/views` | `/view`, `/tampilan` | viewer | `[filter]` | Nama view 3D + baris `/png` siap salin. `--all` menampilkan semua jenis view (sheet, denah, drafting) |
 | `/warnings` | `/peringatan` | viewer | — | Jumlah warning aktif + 10 teratas |
+| `/project` | `/proyek`, `/file` | viewer | `[nama]` | Pilih project mana yang dituju command berikutnya, saat satu Revit membuka beberapa file. Pilihan melekat PER USER |
 | `/queue` | `/antrean`, `/antrian` | viewer | — | Antrean saat ini beserta posisi command milikmu |
 | `/help` | `/bantuan` | viewer | — | Daftar command sesuai role, dalam bahasa aktif |
 

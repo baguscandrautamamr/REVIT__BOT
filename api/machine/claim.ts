@@ -22,14 +22,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     revitVersion?: string | null;
     addinVersion?: string | null;
     busy?: boolean;
+    /** Judul semua project yang terbuka. Kosong = add-in versi lama. */
+    openDocs?: string[] | null;
   };
 
   try {
+    // `open_docs` hanya ikut ditulis kalau kolomnya memang ada. Menyertakannya
+    // tanpa migrasi 004 membuat PostgREST menolak SELURUH PATCH — dan yang mati
+    // bukan cuma pilihan project, melainkan heartbeat: PC-nya langsung terbaca
+    // offline dan tidak satu pun job pernah diambil lagi.
+    const withProjects = await db.projectSelectionReady();
+
     await db.updateMachine({
       last_seen_at: new Date().toISOString(),
       active_doc: body.activeDoc ?? null,
       revit_version: body.revitVersion ?? null,
       addin_version: body.addinVersion ?? null,
+      ...(withProjects ? { open_docs: body.openDocs ?? [] } : {}),
     });
 
     // Bersihkan yang sudah lewat expires_at sebelum mengambil job baru,
