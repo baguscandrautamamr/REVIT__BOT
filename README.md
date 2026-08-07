@@ -15,6 +15,7 @@ di Revit.
 | **Memasang dari nol, langkah demi langkah** | **[docs/SETUP-LANGKAH.md](docs/SETUP-LANGKAH.md)** ← mulai di sini |
 | Referensi lengkap semua sisi Telegram | [docs/TELEGRAM-BOT-GUIDE.id.md](docs/TELEGRAM-BOT-GUIDE.id.md) ([English](docs/TELEGRAM-BOT-GUIDE.en.md)) |
 | Tahu kenapa arsitekturnya begini | [docs/CATATAN-ARSITEKTUR.md](docs/CATATAN-ARSITEKTUR.md) |
+| **Membangun bot serupa dari nol** (CAD/desktop lain, platform chat lain) | **[catatan.md](catatan.md)** — cetak biru + jebakan yang sudah dibayar |
 | Menambah/mengubah teks bot | [docs/DUAL-LANGUAGE.md](docs/DUAL-LANGUAGE.md) |
 | Mengubah tampilan panel web | [docs/THEMING.md](docs/THEMING.md) |
 
