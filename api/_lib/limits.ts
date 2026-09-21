@@ -26,20 +26,24 @@ export function cooldownRemaining(lastHeavyAt: Date | null): number {
  * PC dianggap online kalau claim terakhir masih di dalam jendela ini.
  *
  * Dulu 30 detik, dengan komentar "polling 4 detik" — dan komentar itu sudah
- * lama tidak benar. `QueueWorker` memang mulai di 4 detik, tapi setelah 15
- * siklus tanpa job ia melambat ke `IdleIntervalMs` = 15 detik, dan itulah
- * keadaan normalnya sepanjang hari. Jadi marginnya bukan tujuh interval
- * melainkan DUA: satu permintaan yang lambat, atau wifi yang kedip sekali,
- * sudah cukup membuat jaraknya lewat 30 detik.
+ * lama tidak benar. `QueueWorker` memang mulai di 4 detik, tapi setelah satu
+ * menit tanpa job ia melambat ke `IdleIntervalMs`, dan ITULAH keadaan normalnya
+ * sepanjang hari. Waktu itu idle-nya 15 detik, jadi marginnya bukan tujuh
+ * interval melainkan DUA: satu permintaan yang lambat, atau wifi yang kedip
+ * sekali, sudah cukup membuat jaraknya lewat 30 detik.
  *
  * Yang terlihat waktu itu: panel dan /status melaporkan "PC offline" padahal
  * Revit-nya terbuka dan sehat — kebohongan yang mengirim orang memeriksa PC
  * yang tidak apa-apa.
  *
- * 75 detik = lima interval idle. Ongkosnya: PC yang benar-benar mati baru
- * terbaca mati 45 detik lebih lambat. Itu murah — yang menutup job-nya bukan
- * angka ini melainkan `STUCK_AFTER_MS` (15 menit), dan 45 detik tidak terlihat
- * di sebelah angka itu.
+ * 75 detik terhadap `IdleIntervalMs` yang sekarang 25 detik = margin TIGA
+ * interval, lebih lega daripada dua yang dulu walau polling-nya lebih jarang.
+ * Keduanya satu pasangan: menaikkan selang idle di add-in tanpa menaikkan
+ * angka ini mengembalikan persis bug yang baru saja ditutup.
+ *
+ * Ongkosnya: PC yang benar-benar mati baru terbaca mati 45 detik lebih lambat.
+ * Itu murah — yang menutup job-nya bukan angka ini melainkan `STUCK_AFTER_MS`
+ * (15 menit), dan 45 detik tidak terlihat di sebelah angka itu.
  */
 export const ONLINE_WINDOW_MS = 75_000;
 

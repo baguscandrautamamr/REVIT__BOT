@@ -16,9 +16,40 @@ namespace RevitTelegramBridge.Polling;
 public sealed class QueueWorker
 {
     private const int BusyIntervalMs = 4_000;
-    private const int IdleIntervalMs = 15_000;
 
-    /// <summary>Setelah sekian siklus tanpa job, polling melambat.</summary>
+    /// <summary>
+    /// Selang polling setelah sepi — dan satu-satunya angka di add-in ini yang
+    /// menentukan tagihan Vercel.
+    ///
+    /// Loop ini tidak punya apa pun yang bisa menghentikannya: selama Revit
+    /// terbuka ia menelepon, tidak ada tab yang ditutup, tidak ada
+    /// `visibilityState` seperti di panel web. Jadi angka ini dikalikan
+    /// langsung dengan jumlah jam Revit dibiarkan menyala. Pada 15 detik itu
+    /// ± 5.760 permintaan sehari per PC; pada 25 detik ± 3.456.
+    ///
+    /// ONGKOSNYA, dan sebutkan terus terang: perintah Telegram yang dikirim
+    /// setelah PC-nya sepi menunggu sampai 25 detik sebelum Revit mulai,
+    /// bukan 15. Hanya untuk perintah PERTAMA sesudah sepi — begitu satu job
+    /// masuk, `idleCycles` kembali nol dan selangnya turun lagi ke
+    /// `BusyIntervalMs`, jadi rantai perintah berikutnya tidak melambat sama
+    /// sekali.
+    ///
+    /// Batas atasnya ditentukan `ONLINE_WINDOW_MS` di server (75 detik): kalau
+    /// jarak dua heartbeat melewatinya, panel dan /status melaporkan PC-nya
+    /// offline padahal sehat. 25 detik memberi margin tiga interval. Menaikkan
+    /// angka ini lebih jauh HARUS dibarengi menaikkan angka di server — kalau
+    /// tidak, satu permintaan lambat saja sudah cukup membuat PC yang hidup
+    /// terbaca mati.
+    /// </summary>
+    private const int IdleIntervalMs = 25_000;
+
+    /// <summary>
+    /// Setelah sekian siklus tanpa job, polling melambat.
+    ///
+    /// 15 × `BusyIntervalMs` = satu menit. Selama menit itu add-in tetap
+    /// menyahut tiap 4 detik, jadi orang yang baru saja memakai bot tidak
+    /// pernah merasakan selang idle di atas.
+    /// </summary>
     private const int IdleAfterCycles = 15;
 
     /// <summary>
