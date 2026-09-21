@@ -22,8 +22,26 @@ export function cooldownRemaining(lastHeavyAt: Date | null): number {
   return elapsed >= COOLDOWN_MS ? 0 : Math.ceil((COOLDOWN_MS - elapsed) / 1000);
 }
 
-/** PC dianggap online kalau claim terakhir < 30 detik lalu (polling 4 detik). */
-export const ONLINE_WINDOW_MS = 30_000;
+/**
+ * PC dianggap online kalau claim terakhir masih di dalam jendela ini.
+ *
+ * Dulu 30 detik, dengan komentar "polling 4 detik" — dan komentar itu sudah
+ * lama tidak benar. `QueueWorker` memang mulai di 4 detik, tapi setelah 15
+ * siklus tanpa job ia melambat ke `IdleIntervalMs` = 15 detik, dan itulah
+ * keadaan normalnya sepanjang hari. Jadi marginnya bukan tujuh interval
+ * melainkan DUA: satu permintaan yang lambat, atau wifi yang kedip sekali,
+ * sudah cukup membuat jaraknya lewat 30 detik.
+ *
+ * Yang terlihat waktu itu: panel dan /status melaporkan "PC offline" padahal
+ * Revit-nya terbuka dan sehat — kebohongan yang mengirim orang memeriksa PC
+ * yang tidak apa-apa.
+ *
+ * 75 detik = lima interval idle. Ongkosnya: PC yang benar-benar mati baru
+ * terbaca mati 45 detik lebih lambat. Itu murah — yang menutup job-nya bukan
+ * angka ini melainkan `STUCK_AFTER_MS` (15 menit), dan 45 detik tidak terlihat
+ * di sebelah angka itu.
+ */
+export const ONLINE_WINDOW_MS = 75_000;
 
 export function isOnline(lastSeenAt: string | null): boolean {
   return !!lastSeenAt && Date.now() - new Date(lastSeenAt).getTime() < ONLINE_WINDOW_MS;

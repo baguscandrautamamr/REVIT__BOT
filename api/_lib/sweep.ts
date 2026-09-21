@@ -11,8 +11,11 @@
  * senyap yang dihindari di seluruh repo ini.
  *
  * Penyapu dipanggil dari dua tempat supaya tidak ada celah:
- *   - `machine/claim.ts`   — tiap 4 detik, selama PC hidup
- *   - `telegram/webhook.ts` — tiap command, termasuk saat PC justru mati
+ *   - `machine/claim.ts`   — tiap heartbeat, selama PC hidup (lihat
+ *                            `sweepOnHeartbeat`: pass kedaluwarsanya direm,
+ *                            pass job terlantarnya TIDAK)
+ *   - `telegram/webhook.ts` — tiap command, tanpa rem sama sekali, termasuk
+ *                            saat PC justru mati
  *
  * ── Kenapa sekarang PER-PC ──────────────────────────────────────────────────
  *
@@ -44,6 +47,17 @@ export interface SweepReport {
  * sebuah job. `telegram/webhook.ts` tidak tahu keduanya dan mengirim objek kosong.
  */
 export interface SweepContext {
+  /**
+   * Dipanggil dari jalur heartbeat (`/claim`), bukan dari command user.
+   *
+   * Yang berubah karenanya HANYA pass kedaluwarsa — lihat `EXPIRY_GAP_MS`.
+   * Pass job terlantar tetap jalan setiap kali, dan itu bukan kelalaian
+   * melainkan syarat: `ORPHAN_AFTER_MS` sengaja 2 menit supaya job yang hilang
+   * bersama restart add-in ketahuan dalam hitungan menit, bukan belasan. Rem
+   * apa pun di atasnya menggerus angka itu.
+   */
+  heartbeat?: boolean;
+
   /**
    * PC yang sedang memanggil, dari jalur /claim, beserta apa yang ia ketahui.
    * Tidak ada = jalur webhook: tidak tahu PC mana, dan tidak tahu `busy`.
@@ -187,7 +201,7 @@ export async function sweepAndNotify(ctx: SweepContext = {}): Promise<SweepRepor
   // mana pun dan dikerjakan SEKALI. Menjalankannya per pass akan mengulang
   // pekerjaan yang sama sebanyak jumlah PC, dan yang kedua dan seterusnya selalu
   // mendapat nol baris.
-  const expired = await db.expireStale();
+  const expired = expiryDue(ctx) ? await db.expireStale() : [];
   await Promise.all(expired.map((job) => closeInChat(job, 'common.expired')));
 
   let stuck = 0;
@@ -203,6 +217,57 @@ export async function sweepAndNotify(ctx: SweepContext = {}): Promise<SweepRepor
   }
 
   return { expired: expired.length, stuck };
+}
+
+/**
+ * Jarak minimum antara dua pass KEDALUWARSA yang dipicu heartbeat.
+ *
+ * `expireStale` menutup job `pending` yang lewat `expires_at`, dan `expires_at`
+ * berjarak menit dari saat job dibuat. Menjalankannya tiap heartbeat berarti
+ * satu PATCH ke tabel `commands` setiap 15 detik, 24 jam, untuk menemukan nol
+ * baris hampir setiap kali — dan PATCH itu membuat cabang penyapu jadi dua
+ * perjalanan dalam, yang menentukan panjang seluruh gelombang di `claim.ts`.
+ *
+ * Direm dua menit. Yang tertunda paling lama dua menit adalah penutupan job
+ * yang memang sudah kedaluwarsa diam-diam — dan jalur webhook tetap menyapunya
+ * tanpa rem, jadi orang yang benar-benar menunggu jawaban di chat tidak pernah
+ * menunggu rem ini.
+ *
+ * SENGAJA tidak berlaku untuk `reapRunning`. Lihat `SweepContext.heartbeat`.
+ */
+const EXPIRY_GAP_MS = 2 * 60 * 1000;
+
+/**
+ * Kapan INSTANCE INI terakhir menjalankan pass kedaluwarsa dari heartbeat.
+ *
+ * Per-instance, dan itu cukup: beberapa instance berarti beberapa pass per dua
+ * menit, bukan nol. Menyapu lebih sering tidak pernah salah — cuma boros — dan
+ * bentuk ini tidak bisa menghasilkan kebalikannya.
+ */
+let lastExpirySweep = 0;
+
+/** Pass kedaluwarsa boleh jalan sekarang? */
+function expiryDue(ctx: SweepContext): boolean {
+  if (!ctx.heartbeat) return true;
+
+  const now = Date.now();
+  if (now - lastExpirySweep < EXPIRY_GAP_MS) return false;
+
+  // Dicatat SEBELUM penyapuannya, bukan sesudah. Satu instance Fluid melayani
+  // beberapa permintaan sekaligus; penanda yang baru ditulis setelah selesai
+  // membuat semua heartbeat yang datang selama itu lolos bersamaan.
+  lastExpirySweep = now;
+  return true;
+}
+
+/**
+ * Penyapuan dari jalur /claim.
+ *
+ * TERPISAH dari `sweepQuietly`, bukan sebuah argumen padanya, supaya jalur
+ * webhook tidak bisa ikut kena rem ini karena seseorang lupa.
+ */
+export async function sweepOnHeartbeat(ctx: SweepContext): Promise<void> {
+  await sweepQuietly({ ...ctx, heartbeat: true });
 }
 
 /** Versi yang tidak pernah melempar — untuk dipanggil di jalur command user. */
