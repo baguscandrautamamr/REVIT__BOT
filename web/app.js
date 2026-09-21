@@ -117,7 +117,24 @@ let problem = null;
 const TERMINAL = new Set(['noTelegram', 'expired', 'badSession', 'notRegistered']);
 
 let poll = null;
-function startPolling() { poll ??= setInterval(load, 15000); }
+
+/**
+ * Polling hanya selama panelnya benar-benar terlihat.
+ *
+ * Syarat itu yang baru. Sebelumnya panel yang dibiarkan terbuka di latar
+ * belakang memanggil `/api/panel/state` tiap 15 detik sampai kapan pun — dan
+ * untuk admin ia membawa dua permintaan lagi (`loadUsers` + `loadMachines`) di
+ * ekor tiap putaran, jadi tiga permintaan per 15 detik untuk layar yang tidak
+ * sedang ditatap siapa pun.
+ *
+ * Yang hilang cuma perubahan yang tidak terlihat. `visibilitychange` di bawah
+ * memuat ulang seketika begitu panelnya kembali muncul, jadi yang dilihat orang
+ * saat ia kembali selalu data baru — bukan data berumur satu selang.
+ */
+function startPolling() {
+  if (document.visibilityState !== 'visible') return;
+  poll ??= setInterval(load, 15000);
+}
 function stopPolling() { clearInterval(poll); poll = null; }
 
 // initData dikirim apa adanya; server yang memverifikasi HMAC-nya.
@@ -693,6 +710,25 @@ function relative(iso) {
 }
 
 /* ── Boot ──────────────────────────────────────────────────────────────── */
+
+/**
+ * Panel disembunyikan = berhenti memanggil. Panel muncul lagi = baca sekali,
+ * sekarang juga.
+ *
+ * `load()` sendiri yang memasang kembali interval-nya, jadi tidak ada
+ * `startPolling()` kedua di sini yang bisa berbeda aturannya dari yang di sana.
+ *
+ * Sebab TERMINAL dikecualikan: sesi yang tidak sah tidak akan berubah jadi sah
+ * hanya karena tab-nya dibuka lagi, dan memanggil API untuk menerima 401 yang
+ * sama setiap kali orang berpindah jendela persis kebiasaan yang sedang
+ * dihentikan berkas ini.
+ */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') { stopPolling(); return; }
+  if (problem && TERMINAL.has(problem)) return;
+  load();
+});
+
 document.getElementById('refresh').addEventListener('click', load);
 document.getElementById('user-form').addEventListener('submit', submitUser);
 document.getElementById('machine-form').addEventListener('submit', submitMachine);
